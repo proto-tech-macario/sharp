@@ -6,6 +6,7 @@ readme = "README.md"
 dependencies = [
   "click",
   "gsplat",
+  "h5py",
   "imageio[ffmpeg]",
   "matplotlib",
   "pillow-heif",
