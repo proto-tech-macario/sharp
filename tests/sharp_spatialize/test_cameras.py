@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 from sharp_spatialize.cameras import DEFAULT_LAYOUT, build_camera_rig, camera_at, focus_depth
 
@@ -82,6 +83,18 @@ def test_camera_at_supports_an_arbitrary_intermediate_angle():
     pose = camera_at(_flat_mean_vectors(), 40.0, 32, 32, 3.7, -4.2, 32, 32)
     orth_error = np.max(np.abs(pose.R.T @ pose.R - np.eye(3)))
     assert orth_error < 1e-4
+
+
+def test_build_camera_rig_rejects_zero_angle():
+    """build_camera_rig raises ValueError for angle_deg=0 (would produce 9 identical cameras)."""
+    with pytest.raises(ValueError, match="angle_deg must be positive"):
+        build_camera_rig(_flat_mean_vectors(), 40.0, 32, 32, 0.0, 32, 32)
+
+
+def test_build_camera_rig_rejects_negative_angle():
+    """build_camera_rig raises ValueError for a negative angle_deg."""
+    with pytest.raises(ValueError, match="angle_deg must be positive"):
+        build_camera_rig(_flat_mean_vectors(), 40.0, 32, 32, -10.0, 32, 32)
 
 
 def test_rescales_intrinsics_for_a_different_output_size():

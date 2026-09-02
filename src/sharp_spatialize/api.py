@@ -66,8 +66,8 @@ def generate_spatial_photo(
         device=device,
     )
 
-    width = output_width or scene.width
-    height = output_height or scene.height
+    width = output_width if output_width is not None else scene.width
+    height = output_height if output_height is not None else scene.height
 
     rig = cameras.build_camera_rig(
         scene.gaussians.mean_vectors, scene.f_px, scene.width, scene.height,

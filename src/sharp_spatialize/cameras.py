@@ -99,6 +99,8 @@ def build_camera_rig(
     output_height: int,
 ) -> list[CameraPose]:
     """Build the 9-camera rig V0..V8 for the given angle (applied to both axes)."""
+    if angle_deg <= 0:
+        raise ValueError(f"angle_deg must be positive, got {angle_deg}")
     return [
         camera_at(
             mean_vectors, f_px, source_width, source_height,
