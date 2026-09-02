@@ -50,6 +50,30 @@ def _check_shapes(result: SpatialPhotoResult) -> list[str]:
     num_views = result.rgb.shape[0]
     rgb_h, rgb_w = result.rgb.shape[1:3]
 
+    if num_views != 9:
+        failures.append(f"expected exactly 9 views, got {num_views}")
+
+    metadata_num_views = result.metadata.get("num_views")
+    if metadata_num_views is not None and metadata_num_views != num_views:
+        failures.append(
+            f"metadata num_views={metadata_num_views} does not match "
+            f"actual array num_views={num_views}"
+        )
+
+    metadata_output_width = result.metadata.get("output_width")
+    if metadata_output_width is not None and metadata_output_width != rgb_w:
+        failures.append(
+            f"metadata output_width={metadata_output_width} does not match "
+            f"actual rgb width={rgb_w}"
+        )
+
+    metadata_output_height = result.metadata.get("output_height")
+    if metadata_output_height is not None and metadata_output_height != rgb_h:
+        failures.append(
+            f"metadata output_height={metadata_output_height} does not match "
+            f"actual rgb height={rgb_h}"
+        )
+
     for name, arr in (("depth", result.depth), ("mask", result.mask)):
         if arr.ndim != 3 or arr.shape[0] != num_views:
             failures.append(f"{name} must have shape [{num_views},H,W], got {arr.shape}")

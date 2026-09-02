@@ -140,6 +140,47 @@ def test_check_shapes_flags_mismatched_mask_spatial_dims(consistent_spatial_phot
         validate_in_memory(result)
 
 
+def test_check_shapes_flags_fewer_than_nine_views(consistent_spatial_photo_result):
+    """validate_in_memory flags a result with fewer than 9 views."""
+    result = consistent_spatial_photo_result
+    result.rgb = result.rgb[:4]
+    result.depth = result.depth[:4]
+    result.mask = result.mask[:4]
+    result.K = result.K[:4]
+    result.R = result.R[:4]
+    result.C = result.C[:4]
+
+    with pytest.raises(ValidationError, match="expected exactly 9 views, got 4"):
+        validate_in_memory(result)
+
+
+def test_check_shapes_flags_metadata_num_views_mismatch(consistent_spatial_photo_result):
+    """validate_in_memory flags metadata num_views that disagrees with the actual arrays."""
+    result = consistent_spatial_photo_result
+    result.metadata["num_views"] = 8
+
+    with pytest.raises(ValidationError, match="metadata num_views=8 does not match"):
+        validate_in_memory(result)
+
+
+def test_check_shapes_flags_metadata_output_width_mismatch(consistent_spatial_photo_result):
+    """validate_in_memory flags metadata output_width that disagrees with the actual rgb array."""
+    result = consistent_spatial_photo_result
+    result.metadata["output_width"] = 999
+
+    with pytest.raises(ValidationError, match="metadata output_width=999 does not match"):
+        validate_in_memory(result)
+
+
+def test_check_shapes_flags_metadata_output_height_mismatch(consistent_spatial_photo_result):
+    """validate_in_memory flags metadata output_height that disagrees with the actual rgb array."""
+    result = consistent_spatial_photo_result
+    result.metadata["output_height"] = 999
+
+    with pytest.raises(ValidationError, match="metadata output_height=999 does not match"):
+        validate_in_memory(result)
+
+
 def test_validate_file_never_raises_on_corrupt_hdf5(tmp_path, consistent_spatial_photo_result):
     """validate_file should return ok=False without raising, even on corrupt HDF5."""
     result = consistent_spatial_photo_result
