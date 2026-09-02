@@ -72,3 +72,33 @@ def test_validate_cli_import_does_not_pull_in_gsplat():
         text=True,
     )
     assert result.returncode == 0, f"Subprocess failed: {result.stderr}"
+
+
+def test_load_spatial_photo_attribute_access_does_not_pull_in_gsplat():
+    """Verify that merely accessing sharp_spatialize.load_spatial_photo doesn't drag in gsplat.
+
+    This test runs in a subprocess with a clean sys.modules to ensure that
+    accessing the lazy `load_spatial_photo` package attribute (e.g. as
+    recommended by docs/spatial_photo_format.md) doesn't pull in CUDA-dependent
+    dependencies like gsplat, sharp.models, or sharp_spatialize.inference. This
+    is critical because load_spatial_photo's own docstring promises it does
+    not require SHARP or CUDA.
+    """
+    code = (
+        "import sys; "
+        "import sharp_spatialize; "
+        "_ = sharp_spatialize.load_spatial_photo; "
+        "assert 'gsplat' not in sys.modules, "
+        "'gsplat should not be imported by load_spatial_photo'; "
+        "assert 'sharp.models' not in sys.modules, "
+        "'sharp.models should not be imported by load_spatial_photo'; "
+        "assert 'sharp_spatialize.inference' not in sys.modules, "
+        "'sharp_spatialize.inference should not be imported by load_spatial_photo'"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd="/Users/macariofang/sharp",
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"Subprocess failed: {result.stderr}"
