@@ -35,19 +35,29 @@ class SpatialPhotoResult:
 
 
 def save(path: str | Path, result: SpatialPhotoResult) -> None:
-    """Write `result` to `path`, atomically (via a temp file + rename)."""
+    """Write `result` to `path`, atomically (via a temp file + rename).
+
+    Creates `path`'s parent directory if it doesn't exist. If writing fails
+    partway through, the partially-written temp file is deleted before the
+    exception propagates -- no stale `.tmp` file is left behind.
+    """
     path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with h5py.File(tmp_path, "w") as f:
-        f.create_dataset("rgb", data=result.rgb.astype(np.uint8), compression="gzip")
-        f.create_dataset("depth", data=result.depth.astype(np.float32), compression="gzip")
-        f.create_dataset("mask", data=result.mask.astype(np.uint8), compression="gzip")
-        camera_group = f.create_group("camera")
-        camera_group.create_dataset("K", data=result.K.astype(np.float32))
-        camera_group.create_dataset("R", data=result.R.astype(np.float32))
-        camera_group.create_dataset("C", data=result.C.astype(np.float32))
-        for key, value in result.metadata.items():
-            f.attrs[key] = value
+    try:
+        with h5py.File(tmp_path, "w") as f:
+            f.create_dataset("rgb", data=result.rgb.astype(np.uint8), compression="gzip")
+            f.create_dataset("depth", data=result.depth.astype(np.float32), compression="gzip")
+            f.create_dataset("mask", data=result.mask.astype(np.uint8), compression="gzip")
+            camera_group = f.create_group("camera")
+            camera_group.create_dataset("K", data=result.K.astype(np.float32))
+            camera_group.create_dataset("R", data=result.R.astype(np.float32))
+            camera_group.create_dataset("C", data=result.C.astype(np.float32))
+            for key, value in result.metadata.items():
+                f.attrs[key] = value
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
     os.replace(tmp_path, path)
 
 

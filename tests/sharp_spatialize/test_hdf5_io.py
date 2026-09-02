@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from sharp_spatialize.hdf5_io import SpatialPhotoResult, load, save
 
 
@@ -57,3 +58,32 @@ def test_save_does_not_leave_a_tmp_file_behind(tmp_path):
     save(out_path, result)
 
     assert list(tmp_path.iterdir()) == [out_path]
+
+
+def test_save_creates_missing_parent_directories(tmp_path):
+    """save() creates the output path's parent directories if they don't exist."""
+    result = _make_result()
+    out_path = tmp_path / "nested" / "dir" / "spatial_photo.h5"
+
+    save(out_path, result)
+
+    assert out_path.exists()
+    loaded = load(out_path)
+    np.testing.assert_array_equal(loaded.rgb, result.rgb)
+
+
+def test_save_leaves_no_tmp_file_when_writing_fails(tmp_path):
+    """save() cleans up its temp file if writing raises partway through.
+
+    A metadata value h5py can't store as an attribute (a nested dict) causes
+    the write to fail after the temp file has already been created.
+    """
+    result = _make_result()
+    result.metadata["bad_value"] = {"nested": "dict"}
+    out_path = tmp_path / "spatial_photo.h5"
+
+    with pytest.raises(TypeError):
+        save(out_path, result)
+
+    assert not out_path.exists()
+    assert list(tmp_path.iterdir()) == []
