@@ -19,6 +19,8 @@ dependencies = [
 
 [project.scripts]
 sharp = "sharp.cli:main_cli"
+sharp-spatialize = "sharp_spatialize.cli:generate_cli"
+sharp-spatialize-validate = "sharp_spatialize.cli:validate_cli"
 
 [project.urls]
 Homepage = "https://github.com/apple/ml-sharp"
