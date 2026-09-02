@@ -31,8 +31,14 @@ def _dummy_gaussians() -> Gaussians3D:
 
 
 def _dummy_pose() -> CameraPose:
+    # A real intrinsic centered on the 8x8 test image, not np.eye(3) (fx=fy=1,
+    # cx=cy=0): with cx=cy=0 the Gaussian's projected peak lands on the image
+    # corner where no pixel center samples it, so no pixel would ever clear
+    # the alpha threshold and `mask.any()` would fail even for a correct
+    # renderer. fx=fy=8 keeps the projected footprint comfortably within a
+    # few pixels of center for the z=2.0 Gaussian in _dummy_gaussians().
     return CameraPose(
-        K=np.eye(3, dtype=np.float32),
+        K=np.array([[8.0, 0.0, 4.0], [0.0, 8.0, 4.0], [0.0, 0.0, 1.0]], dtype=np.float32),
         R=np.eye(3, dtype=np.float32),
         C=np.zeros(3, dtype=np.float32),
     )
