@@ -1,14 +1,15 @@
-"""Tests for sharp_spatialize.api. inference.infer and render.render_views
-are monkeypatched so this file needs no SHARP checkpoint, network, or GPU.
+"""Tests for sharp_spatialize.api.
+
+inference.infer and render.render_views are monkeypatched so this file needs
+no SHARP checkpoint, network, or GPU.
 """
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
-import torch
-
 import sharp_spatialize.api as api_module
+import torch
 from sharp.utils.gaussians import Gaussians3D
 from sharp_spatialize.inference import SceneBundle
 from sharp_spatialize.validation import ValidationError
@@ -42,7 +43,10 @@ def _fake_render_views(gaussians, rig, output_width, output_height, mask_alpha_t
     return rgb, depth, mask
 
 
-def test_generate_spatial_photo_wires_the_pipeline_and_returns_a_valid_result(tmp_path, monkeypatch):
+def test_generate_spatial_photo_wires_the_pipeline_and_returns_a_valid_result(
+    tmp_path, monkeypatch
+):
+    """generate_spatial_photo wires inference/render/validation into a valid result."""
     image_path = tmp_path / "input.jpg"
     image_path.write_bytes(b"not a real jpeg -- inference.infer is mocked")
 
@@ -69,6 +73,7 @@ def test_generate_spatial_photo_wires_the_pipeline_and_returns_a_valid_result(tm
 
 
 def test_generate_spatial_photo_raises_when_validation_fails(tmp_path, monkeypatch):
+    """generate_spatial_photo raises ValidationError when the rendered result is invalid."""
     image_path = tmp_path / "input.jpg"
     image_path.write_bytes(b"not a real jpeg -- inference.infer is mocked")
 
@@ -85,6 +90,7 @@ def test_generate_spatial_photo_raises_when_validation_fails(tmp_path, monkeypat
 
 
 def test_load_spatial_photo_round_trips_a_saved_result(tmp_path, monkeypatch):
+    """load_spatial_photo reads back exactly what generate_spatial_photo saved."""
     image_path = tmp_path / "input.jpg"
     image_path.write_bytes(b"not a real jpeg -- inference.infer is mocked")
     monkeypatch.setattr(api_module.inference, "infer", lambda *a, **k: _fake_scene())

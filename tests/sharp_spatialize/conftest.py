@@ -11,7 +11,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
-
 from sharp_spatialize.cameras import build_camera_rig
 from sharp_spatialize.hdf5_io import SpatialPhotoResult
 

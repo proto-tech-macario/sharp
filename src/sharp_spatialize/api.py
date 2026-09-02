@@ -1,5 +1,7 @@
-"""Public Python API: `generate_spatial_photo` ties inference, camera rig
-construction, rendering, HDF5 packaging, and validation into one call.
+"""Public Python API.
+
+`generate_spatial_photo` ties inference, camera rig construction, rendering,
+HDF5 packaging, and validation into one call.
 """
 
 from __future__ import annotations
@@ -35,7 +37,10 @@ def _build_metadata(
         "horizontal_angle": float(angle_deg),
         "vertical_angle": float(angle_deg),
         "coordinate_system": "OpenCV",
-        "pose_convention": "R is world->camera; C is the camera's world position; x_cam = R @ (x_world - C)",
+        "pose_convention": (
+            "R is world->camera; C is the camera's world position; "
+            "x_cam = R @ (x_world - C)"
+        ),
         "depth_definition": "camera_z",
         "depth_unit": "meter",
     }

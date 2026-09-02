@@ -6,12 +6,12 @@ import subprocess
 import sys
 
 from click.testing import CliRunner
-
 from sharp_spatialize.cli import generate_cli, validate_cli
 from sharp_spatialize.hdf5_io import save
 
 
 def test_validate_cli_passes_on_a_consistent_file(tmp_path, consistent_spatial_photo_result):
+    """validate_cli exits 0 and reports PASS for a consistent spatial photo file."""
     path = tmp_path / "spatial_photo.h5"
     save(path, consistent_spatial_photo_result)
 
@@ -22,6 +22,7 @@ def test_validate_cli_passes_on_a_consistent_file(tmp_path, consistent_spatial_p
 
 
 def test_validate_cli_fails_on_a_broken_file(tmp_path, consistent_spatial_photo_result):
+    """validate_cli exits 1 and reports FAIL with the specific failure reason."""
     broken = consistent_spatial_photo_result
     del broken.metadata["depth_unit"]
     path = tmp_path / "broken.h5"
@@ -35,6 +36,7 @@ def test_validate_cli_fails_on_a_broken_file(tmp_path, consistent_spatial_photo_
 
 
 def test_generate_cli_reports_a_clear_error_for_a_missing_input_file(tmp_path):
+    """generate_cli reports a clear error naming the missing input file."""
     result = CliRunner().invoke(
         generate_cli,
         ["--input", str(tmp_path / "does_not_exist.jpg"), "--output", str(tmp_path / "out.h5")],

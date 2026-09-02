@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-
 from sharp_spatialize.cameras import DEFAULT_LAYOUT, build_camera_rig, camera_at, focus_depth
 
 PLANE_Z = 5.0
@@ -21,11 +20,13 @@ def _flat_mean_vectors() -> torch.Tensor:
 
 
 def test_focus_depth_is_near_the_flat_scenes_depth():
+    """focus_depth recovers the depth of a flat, single-depth-plane scene."""
     depth = focus_depth(_flat_mean_vectors())
     assert depth == PLANE_Z
 
 
 def test_focus_depth_raises_when_no_positive_depth_points():
+    """focus_depth raises ValueError when no point has strictly positive depth."""
     mean_vectors = torch.zeros(1, 5, 3)  # all z == 0, nothing strictly positive
     try:
         focus_depth(mean_vectors)
@@ -35,6 +36,7 @@ def test_focus_depth_raises_when_no_positive_depth_points():
 
 
 def test_default_layout_matches_spec_v0_through_v8():
+    """DEFAULT_LAYOUT matches the spec's 3x3 grid ordering (v0..v8)."""
     assert DEFAULT_LAYOUT == (
         (-1.0, 1.0), (0.0, 1.0), (1.0, 1.0),
         (-1.0, 0.0), (0.0, 0.0), (1.0, 0.0),
@@ -43,11 +45,13 @@ def test_default_layout_matches_spec_v0_through_v8():
 
 
 def test_build_camera_rig_returns_exactly_nine_views():
+    """build_camera_rig always returns the 9-view 3x3 rig."""
     rig = build_camera_rig(_flat_mean_vectors(), 40.0, 32, 32, 10.0, 32, 32)
     assert len(rig) == 9
 
 
 def test_v4_is_the_reference_camera():
+    """The center view (v4) has identity rotation and zero translation."""
     rig = build_camera_rig(_flat_mean_vectors(), 40.0, 32, 32, 10.0, 32, 32)
     v4 = rig[4]
     np.testing.assert_allclose(v4.R, np.eye(3, dtype=np.float32), atol=1e-6)
@@ -55,6 +59,7 @@ def test_v4_is_the_reference_camera():
 
 
 def test_every_view_has_an_orthonormal_rotation_with_determinant_one():
+    """Every rig view's rotation matrix is orthonormal with determinant 1."""
     rig = build_camera_rig(_flat_mean_vectors(), 40.0, 32, 32, 10.0, 32, 32)
     for pose in rig:
         orth_error = np.max(np.abs(pose.R.T @ pose.R - np.eye(3)))
@@ -63,6 +68,7 @@ def test_every_view_has_an_orthonormal_rotation_with_determinant_one():
 
 
 def test_camera_at_agrees_with_build_camera_rig_at_a_grid_angle():
+    """camera_at reproduces the same pose build_camera_rig computes for a grid point."""
     mean_vectors = _flat_mean_vectors()
     rig = build_camera_rig(mean_vectors, 40.0, 32, 32, 10.0, 32, 32)
     v0_direct = camera_at(mean_vectors, 40.0, 32, 32, -10.0, 10.0, 32, 32)
@@ -79,6 +85,7 @@ def test_camera_at_supports_an_arbitrary_intermediate_angle():
 
 
 def test_rescales_intrinsics_for_a_different_output_size():
+    """Intrinsics K scale correctly when output size differs from source size."""
     rig = build_camera_rig(_flat_mean_vectors(), 40.0, 32, 32, 10.0, 64, 16)
     v4 = rig[4]
     assert v4.K[0, 0] == 80.0  # fx doubled: output_width 64 / source_width 32

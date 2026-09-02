@@ -15,7 +15,6 @@ from urllib.parse import urlparse
 import numpy as np
 import torch
 import torch.nn.functional as F
-
 from sharp.cli.predict import DEFAULT_MODEL_URL
 from sharp.models import PredictorParams, RGBGaussianPredictor, create_predictor
 from sharp.utils import io as sharp_io

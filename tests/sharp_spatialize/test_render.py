@@ -10,7 +10,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
-
 from sharp.utils.gaussians import Gaussians3D
 from sharp_spatialize.cameras import CameraPose
 from sharp_spatialize.render import render_views
@@ -28,18 +27,22 @@ def _dummy_gaussians() -> Gaussians3D:
 
 def _dummy_pose() -> CameraPose:
     return CameraPose(
-        K=np.eye(3, dtype=np.float32), R=np.eye(3, dtype=np.float32), C=np.zeros(3, dtype=np.float32)
+        K=np.eye(3, dtype=np.float32),
+        R=np.eye(3, dtype=np.float32),
+        C=np.zeros(3, dtype=np.float32),
     )
 
 
 @pytest.mark.skipif(torch.cuda.is_available(), reason="only meaningful without a CUDA GPU")
 def test_render_views_raises_a_clear_error_without_cuda():
+    """render_views raises a clear RuntimeError when no CUDA GPU is available."""
     with pytest.raises(RuntimeError, match="requires a CUDA GPU"):
         render_views(_dummy_gaussians(), [_dummy_pose()], output_width=8, output_height=8)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires a CUDA GPU")
 def test_render_views_produces_expected_shapes_on_cuda():
+    """render_views produces correctly shaped and typed rgb/depth/mask arrays on CUDA."""
     rgb, depth, mask = render_views(
         _dummy_gaussians(), [_dummy_pose(), _dummy_pose()], output_width=8, output_height=8
     )

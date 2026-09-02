@@ -9,10 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import sharp_spatialize.inference as inference_module
 import torch
 from PIL import Image
-
-import sharp_spatialize.inference as inference_module
 from sharp.cli.predict import DEFAULT_MODEL_URL
 from sharp.models import PredictorParams, create_predictor
 from sharp.utils.gaussians import Gaussians3D
@@ -38,18 +37,23 @@ class _FakePredictor(torch.nn.Module):
 
 
 def test_pick_device_passes_through_an_explicit_choice():
+    """pick_device returns an explicitly requested device unchanged."""
     assert inference_module.pick_device("cpu") == "cpu"
 
 
 def test_run_forward_pass_returns_finite_gaussians_of_expected_batch_size():
+    """_run_forward_pass returns finite Gaussians with the predictor's point count."""
     image = (np.random.default_rng(0).random((64, 96, 3)) * 255).astype(np.uint8)
-    gaussians = inference_module._run_forward_pass(_FakePredictor(num_points=12), image, 80.0, "cpu")
+    gaussians = inference_module._run_forward_pass(
+        _FakePredictor(num_points=12), image, 80.0, "cpu"
+    )
 
     assert gaussians.mean_vectors.shape == (1, 12, 3)
     assert torch.isfinite(gaussians.mean_vectors).all()
 
 
 def test_infer_wires_together_load_predictor_and_forward_pass(tmp_path, monkeypatch):
+    """infer() loads the predictor and runs the forward pass to build a SceneBundle."""
     image_path = tmp_path / "input.png"
     Image.fromarray(
         (np.random.default_rng(1).random((40, 50, 3)) * 255).astype(np.uint8)

@@ -1,6 +1,7 @@
-"""Validates a SpatialPhotoResult against the Stage 1 spec's checks: file
-shapes/metadata, camera rotation validity, depth sanity, and a reprojection
-consistency test between two views.
+"""Validates a SpatialPhotoResult against the Stage 1 spec's checks.
+
+Checks file shapes/metadata, camera rotation validity, depth sanity, and a
+reprojection consistency test between two views.
 """
 
 from __future__ import annotations
@@ -53,7 +54,9 @@ def _check_shapes(result: SpatialPhotoResult) -> list[str]:
         if arr.ndim != 3 or arr.shape[0] != num_views:
             failures.append(f"{name} must have shape [{num_views},H,W], got {arr.shape}")
         elif arr.shape[1:3] != (rgb_h, rgb_w):
-            failures.append(f"{name} spatial dims (H,W)={arr.shape[1:3]} must match rgb {(rgb_h, rgb_w)}")
+            failures.append(
+                f"{name} spatial dims (H,W)={arr.shape[1:3]} must match rgb {(rgb_h, rgb_w)}"
+            )
 
     if result.mask.dtype != np.uint8:
         failures.append(f"mask must be dtype uint8, got {result.mask.dtype}")
@@ -160,7 +163,10 @@ def _check_reprojection(result: SpatialPhotoResult, src_idx: int, dst_idx: int) 
     u_hit, v_hit = u_round[comparable], v_round[comparable]
     dst_valid = result.mask[dst_idx][v_hit, u_hit] == 1
     if not dst_valid.any():
-        return [f"reprojection view {src_idx}->{dst_idx}: no comparable pixels land on valid target pixels"]
+        return [
+            f"reprojection view {src_idx}->{dst_idx}: "
+            "no comparable pixels land on valid target pixels"
+        ]
 
     src_colors = result.rgb[src_idx][comparable][dst_valid].astype(np.float32)
     dst_colors = result.rgb[dst_idx][v_hit[dst_valid], u_hit[dst_valid]].astype(np.float32)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-
 from sharp_spatialize.hdf5_io import SpatialPhotoResult, load, save
 
 
@@ -21,6 +20,7 @@ def _make_result(num_views: int = 9, height: int = 4, width: int = 6) -> Spatial
 
 
 def test_save_then_load_round_trips_all_datasets(tmp_path):
+    """save() then load() reproduces every dataset and metadata field exactly."""
     result = _make_result()
     out_path = tmp_path / "spatial_photo.h5"
 
@@ -38,6 +38,7 @@ def test_save_then_load_round_trips_all_datasets(tmp_path):
 
 
 def test_result_save_method_matches_module_level_save(tmp_path):
+    """SpatialPhotoResult.save() behaves the same as the module-level save() function."""
     result = _make_result()
     out_path = tmp_path / "spatial_photo.h5"
 
@@ -49,6 +50,7 @@ def test_result_save_method_matches_module_level_save(tmp_path):
 
 
 def test_save_does_not_leave_a_tmp_file_behind(tmp_path):
+    """save() cleans up its temporary file, leaving only the final output path."""
     result = _make_result()
     out_path = tmp_path / "spatial_photo.h5"
 

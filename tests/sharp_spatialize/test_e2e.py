@@ -1,6 +1,7 @@
-"""End-to-end tests requiring a real CUDA GPU: SHARP inference + gsplat
-rendering + HDF5 packaging + validation, all for real, using the repo's
-bundled sample image. Skipped everywhere else.
+"""End-to-end tests requiring a real CUDA GPU.
+
+Exercises SHARP inference + gsplat rendering + HDF5 packaging + validation,
+all for real, using the repo's bundled sample image. Skipped everywhere else.
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
-
 from sharp_spatialize.api import generate_spatial_photo
 from sharp_spatialize.cameras import camera_at
 from sharp_spatialize.hdf5_io import load
@@ -24,6 +24,7 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="requires 
 
 
 def test_generate_spatial_photo_end_to_end(tmp_path):
+    """generate_spatial_photo produces a valid, round-trippable spatial photo on real CUDA."""
     result = generate_spatial_photo(SAMPLE_IMAGE, angle_deg=10.0, device="cuda")
 
     assert result.rgb.shape[0] == 9

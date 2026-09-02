@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from sharp_spatialize.hdf5_io import save
 from sharp_spatialize.validation import ValidationError, validate_file, validate_in_memory
 
 
 def test_validate_in_memory_accepts_a_consistent_synthetic_scene(consistent_spatial_photo_result):
+    """validate_in_memory does not raise for a self-consistent synthetic scene."""
     validate_in_memory(consistent_spatial_photo_result)  # must not raise
 
 
 def test_check_shapes_flags_wrong_rgb_shape(consistent_spatial_photo_result):
+    """validate_in_memory flags an rgb array with the wrong number of channels."""
     result = consistent_spatial_photo_result
     result.rgb = result.rgb[..., :2]
 
@@ -22,6 +23,7 @@ def test_check_shapes_flags_wrong_rgb_shape(consistent_spatial_photo_result):
 
 
 def test_check_metadata_flags_missing_keys(consistent_spatial_photo_result):
+    """validate_in_memory flags a missing required metadata key."""
     result = consistent_spatial_photo_result
     del result.metadata["depth_unit"]
 
@@ -30,6 +32,7 @@ def test_check_metadata_flags_missing_keys(consistent_spatial_photo_result):
 
 
 def test_check_camera_rotations_flags_non_orthonormal_r(consistent_spatial_photo_result):
+    """validate_in_memory flags a rotation matrix that isn't orthonormal."""
     result = consistent_spatial_photo_result
     result.R[0] = result.R[0] * 2.0
 
@@ -38,6 +41,7 @@ def test_check_camera_rotations_flags_non_orthonormal_r(consistent_spatial_photo
 
 
 def test_check_depth_flags_nan(consistent_spatial_photo_result):
+    """validate_in_memory flags NaN values in the depth array."""
     result = consistent_spatial_photo_result
     result.depth[0, 0, 0] = np.nan
 
@@ -46,6 +50,7 @@ def test_check_depth_flags_nan(consistent_spatial_photo_result):
 
 
 def test_check_depth_flags_nonzero_depth_at_invalid_mask(consistent_spatial_photo_result):
+    """validate_in_memory flags non-zero depth at pixels the mask marks invalid."""
     result = consistent_spatial_photo_result
     invalid_pixels = result.mask[4] == 0
     assert invalid_pixels.any(), "fixture must have at least one invalid pixel in view 4"
@@ -56,6 +61,7 @@ def test_check_depth_flags_nonzero_depth_at_invalid_mask(consistent_spatial_phot
 
 
 def test_reprojection_fails_when_depth_is_corrupted(consistent_spatial_photo_result):
+    """validate_in_memory's reprojection check flags depth that breaks view consistency."""
     result = consistent_spatial_photo_result
     result.depth[3] += 2.0  # break consistency between views 3 and 5
 
@@ -63,7 +69,10 @@ def test_reprojection_fails_when_depth_is_corrupted(consistent_spatial_photo_res
         validate_in_memory(result)
 
 
-def test_validate_file_reports_all_failures_without_raising(tmp_path, consistent_spatial_photo_result):
+def test_validate_file_reports_all_failures_without_raising(
+    tmp_path, consistent_spatial_photo_result
+):
+    """validate_file collects every failure into one report instead of raising."""
     result = consistent_spatial_photo_result
     del result.metadata["depth_unit"]
     result.R[0] = result.R[0] * 2.0
@@ -78,6 +87,7 @@ def test_validate_file_reports_all_failures_without_raising(tmp_path, consistent
 
 
 def test_check_shapes_flags_wrong_rgb_dtype(consistent_spatial_photo_result):
+    """validate_in_memory flags an rgb array with the wrong dtype."""
     result = consistent_spatial_photo_result
     result.rgb = result.rgb.astype(np.float32)
 
@@ -86,6 +96,7 @@ def test_check_shapes_flags_wrong_rgb_dtype(consistent_spatial_photo_result):
 
 
 def test_check_shapes_flags_wrong_depth_dtype(consistent_spatial_photo_result):
+    """validate_in_memory flags a depth array with the wrong dtype."""
     result = consistent_spatial_photo_result
     result.depth = result.depth.astype(np.float64)
 
@@ -94,6 +105,7 @@ def test_check_shapes_flags_wrong_depth_dtype(consistent_spatial_photo_result):
 
 
 def test_check_shapes_flags_wrong_mask_dtype(consistent_spatial_photo_result):
+    """validate_in_memory flags a mask array with the wrong dtype."""
     result = consistent_spatial_photo_result
     result.mask = result.mask.astype(np.int32)
 
@@ -102,6 +114,7 @@ def test_check_shapes_flags_wrong_mask_dtype(consistent_spatial_photo_result):
 
 
 def test_check_shapes_flags_wrong_k_dtype(consistent_spatial_photo_result):
+    """validate_in_memory flags a K (intrinsics) array with the wrong dtype."""
     result = consistent_spatial_photo_result
     result.K = result.K.astype(np.float64)
 
@@ -110,6 +123,7 @@ def test_check_shapes_flags_wrong_k_dtype(consistent_spatial_photo_result):
 
 
 def test_check_shapes_flags_mismatched_depth_spatial_dims(consistent_spatial_photo_result):
+    """validate_in_memory flags depth whose spatial dims don't match rgb."""
     result = consistent_spatial_photo_result
     result.depth = result.depth[:, :16, :]  # truncate height
 
@@ -118,6 +132,7 @@ def test_check_shapes_flags_mismatched_depth_spatial_dims(consistent_spatial_pho
 
 
 def test_check_shapes_flags_mismatched_mask_spatial_dims(consistent_spatial_photo_result):
+    """validate_in_memory flags a mask whose spatial dims don't match rgb."""
     result = consistent_spatial_photo_result
     result.mask = result.mask[:, :, :16]  # truncate width
 

@@ -1,5 +1,6 @@
-"""Renders RGB, depth, and validity masks for a camera rig via SHARP's
-Gaussian rasterizer (`sharp.utils.gsplat`).
+"""Renders RGB, depth, and validity masks for a camera rig.
+
+Uses SHARP's Gaussian rasterizer (`sharp.utils.gsplat`).
 
 Requires a CUDA GPU -- gsplat has no CPU/MPS kernel, the same constraint
 `sharp.cli.render` already enforces for `sharp render`.
@@ -9,7 +10,6 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-
 from sharp.utils.gaussians import Gaussians3D
 from sharp.utils.gsplat import GSplatRenderer
 

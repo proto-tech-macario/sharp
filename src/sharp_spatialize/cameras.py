@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
-
 from sharp.utils.camera import create_camera_matrix
 
 FOCUS_DEPTH_QUANTILE = 0.1

@@ -26,8 +26,14 @@ from .validation import ValidationError, validate_file
     help="Horizontal/vertical camera angle in degrees. Any positive float works; "
     "5, 10, and 15 are the values this tool is validated against.",
 )
-@click.option("--width", "output_width", type=int, default=None, help="Output width in pixels (defaults to the source image width).")
-@click.option("--height", "output_height", type=int, default=None, help="Output height in pixels (defaults to the source image height).")
+@click.option(
+    "--width", "output_width", type=int, default=None,
+    help="Output width in pixels (defaults to the source image width).",
+)
+@click.option(
+    "--height", "output_height", type=int, default=None,
+    help="Output height in pixels (defaults to the source image height).",
+)
 @click.option(
     "-c", "--checkpoint", "checkpoint_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None,
