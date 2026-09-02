@@ -30,6 +30,9 @@ def test_generate_spatial_photo_end_to_end(tmp_path):
     assert result.rgb.shape[0] == 9
     assert result.rgb.dtype == np.uint8
     assert result.depth.shape[0] == 9
+    assert len(np.unique(result.C, axis=0)) == 9  # real parallax, not a collapsed rig
+    assert not np.array_equal(result.rgb[3], result.rgb[5])  # views actually differ
+    assert result.mask.any()  # something rendered as valid
 
     out_path = tmp_path / "spatial_photo.h5"
     result.save(out_path)
@@ -52,3 +55,4 @@ def test_arbitrary_intermediate_camera_angle_renders():
 
     assert rgb.shape == (1, scene.height, scene.width, 3)
     assert np.isfinite(depth).all()
+    assert mask.any()

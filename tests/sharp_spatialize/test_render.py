@@ -16,8 +16,13 @@ from sharp_spatialize.render import render_views
 
 
 def _dummy_gaussians() -> Gaussians3D:
+    # Placed at z=2.0 (positive, in front of the identity-pose camera at the
+    # origin looking down +Z) -- a Gaussian at the camera's own position
+    # (z=0) would be culled by gsplat's depth<=1e-2 cutoff, producing an
+    # empty (all-zero, alpha=0) frame that would pass shape/dtype checks
+    # even for a completely broken renderer.
     return Gaussians3D(
-        mean_vectors=torch.zeros(1, 1, 3),
+        mean_vectors=torch.tensor([[[0.0, 0.0, 2.0]]]),
         singular_values=torch.ones(1, 1, 3),
         quaternions=torch.tensor([[[1.0, 0.0, 0.0, 0.0]]]),
         colors=torch.zeros(1, 1, 3),
@@ -53,3 +58,6 @@ def test_render_views_produces_expected_shapes_on_cuda():
     assert mask.shape == (2, 8, 8)
     assert mask.dtype == np.uint8
     assert np.isfinite(depth).all()
+    assert mask.any()  # something actually rendered as valid, not an empty frame
+    assert set(np.unique(mask)).issubset({0, 1})  # mask is strictly binary
+    assert np.all(depth[mask == 0] == 0.0)  # invalid depth is exactly zero
