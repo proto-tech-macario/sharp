@@ -6,11 +6,15 @@ no network access, checkpoint download, or GPU.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import torch
 from PIL import Image
 
 import sharp_spatialize.inference as inference_module
+from sharp.cli.predict import DEFAULT_MODEL_URL
+from sharp.models import PredictorParams, create_predictor
 from sharp.utils.gaussians import Gaussians3D
 
 
@@ -64,3 +68,59 @@ def test_infer_wires_together_load_predictor_and_forward_pass(tmp_path, monkeypa
     assert scene.model_version == "fake-model-v1"
     assert scene.gaussians.mean_vectors.shape[0] == 1
     assert torch.isfinite(scene.gaussians.mean_vectors).all()
+
+
+def test_load_predictor_checkpoint_path_branch(tmp_path):
+    """Test the checkpoint-path branch of _load_predictor."""
+    # Build a real predictor and save its state dict
+    predictor_fresh = create_predictor(PredictorParams())
+    state_dict = predictor_fresh.state_dict()
+
+    checkpoint_path = tmp_path / "test_model.pt"
+    torch.save(state_dict, checkpoint_path)
+
+    # Load via the checkpoint path
+    loaded_predictor, model_version = inference_module._load_predictor(checkpoint_path, "cpu")
+
+    # Verify it's the right type
+    from sharp.models import RGBGaussianPredictor
+    assert isinstance(loaded_predictor, RGBGaussianPredictor)
+
+    # Verify model_version is extracted correctly from checkpoint filename
+    assert model_version == "test_model.pt"
+
+    # Verify it's in eval mode
+    assert loaded_predictor.training is False
+
+
+def test_load_predictor_default_download_branch(monkeypatch):
+    """Test the default-download branch of _load_predictor."""
+    # Build a fresh predictor's state dict to use as the mock return value
+    predictor_fresh = create_predictor(PredictorParams())
+    state_dict = predictor_fresh.state_dict()
+
+    # Track if the mock was called
+    call_tracker = {"called": False}
+
+    def mock_load_state_dict_from_url(url, progress=False):  # noqa: ARG001
+        call_tracker["called"] = True
+        return state_dict
+
+    # Monkeypatch torch.hub.load_state_dict_from_url
+    monkeypatch.setattr(torch.hub, "load_state_dict_from_url", mock_load_state_dict_from_url)
+
+    # Load via the default path (checkpoint_path=None)
+    loaded_predictor, model_version = inference_module._load_predictor(None, "cpu")
+
+    # Verify the mock was called
+    assert call_tracker["called"]
+
+    # Verify model_version is extracted correctly from DEFAULT_MODEL_URL
+    # DEFAULT_MODEL_URL is something like "https://...../sharp_2572gikvuh.pt"
+    expected_filename = Path(DEFAULT_MODEL_URL.split("/")[-1])
+    assert model_version == expected_filename.name
+
+    # Verify it's the right type and in eval mode
+    from sharp.models import RGBGaussianPredictor
+    assert isinstance(loaded_predictor, RGBGaussianPredictor)
+    assert loaded_predictor.training is False
