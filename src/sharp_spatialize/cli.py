@@ -7,7 +7,6 @@ from pathlib import Path
 
 import click
 
-from .api import generate_spatial_photo
 from .validation import ValidationError, validate_file
 
 
@@ -49,6 +48,8 @@ def generate_cli(
     device: str,
 ) -> None:
     """Convert one RGB image into a 9-view spatial_photo.h5 file."""
+    from .api import generate_spatial_photo
+
     try:
         result = generate_spatial_photo(
             input_path, angle_deg=angle_deg, output_width=output_width,

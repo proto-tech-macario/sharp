@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+
 from click.testing import CliRunner
 
 from sharp_spatialize.cli import generate_cli, validate_cli
@@ -39,3 +42,31 @@ def test_generate_cli_reports_a_clear_error_for_a_missing_input_file(tmp_path):
 
     assert result.exit_code != 0
     assert "does_not_exist.jpg" in result.output
+
+
+def test_validate_cli_import_does_not_pull_in_gsplat():
+    """Verify that importing validate_cli alone doesn't drag in gsplat/sharp.models.
+
+    This test runs in a subprocess with a clean sys.modules to ensure that
+    simply importing validate_cli (e.g., to wire up the console script) doesn't
+    pull in CUDA-dependent dependencies like gsplat, sharp.models, or inference.
+    This is critical because validate_cli is designed to work on machines with
+    no GPU and no SHARP installed.
+    """
+    code = (
+        "import sys; "
+        "from sharp_spatialize.cli import validate_cli; "
+        "assert 'gsplat' not in sys.modules, "
+        "'gsplat should not be imported by validate_cli'; "
+        "assert 'sharp.models' not in sys.modules, "
+        "'sharp.models should not be imported by validate_cli'; "
+        "assert 'sharp_spatialize.inference' not in sys.modules, "
+        "'sharp_spatialize.inference should not be imported by validate_cli'"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd="/Users/macariofang/sharp",
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"Subprocess failed: {result.stderr}"
