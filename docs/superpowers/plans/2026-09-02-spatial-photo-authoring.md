@@ -1977,3 +1977,13 @@ Claude-Session: https://claude.ai/code/session_01LDaau3BWz9CKHKLfpGVU2B"
 - [ ] **Step 6: Hand off**
 
 Report to the user: what was implemented, that the full non-CUDA test suite passes, and that end-to-end CUDA verification (Task 8) is the one remaining step before this can be called done against the spec's acceptance criteria. Do not merge to `main` or open a PR without being asked.
+
+## Status
+
+All 10 tasks implemented and committed on branch `spatial-photo-authoring`.
+Everything not requiring CUDA has been run and passes on this machine
+(camera geometry, HDF5 I/O, validation logic, inference plumbing, API
+wiring, CLI argument handling). `render.py`'s real-rendering path and
+`tests/sharp_spatialize/test_e2e.py` are skip-marked here and still need to
+be run on a CUDA-equipped machine (see Task 8, Step 4) before Stage 1
+acceptance criteria #1-4, #9, and #10 (spec §15) can be marked verified.
