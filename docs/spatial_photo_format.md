@@ -54,6 +54,11 @@ degrees) and each pair is `(horizontal_angle, vertical_angle)`. Every camera
 orbits the same fixed focus point and looks back at it, so adjacent views
 have real parallax/occlusion, not just a re-oriented crop of the same pixels.
 
+Note: because this uses the OpenCV convention (Y down), a positive
+`vertical_angle` places that camera *below* the reference viewpoint, not
+above -- the grid above shows index order (V0..V8), not literal vertical
+position.
+
 ## File-level attributes (`f.attrs`)
 
 `format_version, model_name, model_version, source_width, source_height,
