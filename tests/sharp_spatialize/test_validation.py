@@ -75,3 +75,68 @@ def test_validate_file_reports_all_failures_without_raising(tmp_path, consistent
     assert not report.ok
     assert any("depth_unit" in failure for failure in report.failures)
     assert any("R^T R" in failure for failure in report.failures)
+
+
+def test_check_shapes_flags_wrong_rgb_dtype(consistent_spatial_photo_result):
+    result = consistent_spatial_photo_result
+    result.rgb = result.rgb.astype(np.float32)
+
+    with pytest.raises(ValidationError, match="rgb must be dtype uint8"):
+        validate_in_memory(result)
+
+
+def test_check_shapes_flags_wrong_depth_dtype(consistent_spatial_photo_result):
+    result = consistent_spatial_photo_result
+    result.depth = result.depth.astype(np.float64)
+
+    with pytest.raises(ValidationError, match="depth must be dtype float32"):
+        validate_in_memory(result)
+
+
+def test_check_shapes_flags_wrong_mask_dtype(consistent_spatial_photo_result):
+    result = consistent_spatial_photo_result
+    result.mask = result.mask.astype(np.int32)
+
+    with pytest.raises(ValidationError, match="mask must be dtype uint8"):
+        validate_in_memory(result)
+
+
+def test_check_shapes_flags_wrong_k_dtype(consistent_spatial_photo_result):
+    result = consistent_spatial_photo_result
+    result.K = result.K.astype(np.float64)
+
+    with pytest.raises(ValidationError, match="K must be dtype float32"):
+        validate_in_memory(result)
+
+
+def test_check_shapes_flags_mismatched_depth_spatial_dims(consistent_spatial_photo_result):
+    result = consistent_spatial_photo_result
+    result.depth = result.depth[:, :16, :]  # truncate height
+
+    with pytest.raises(ValidationError, match="depth spatial dims"):
+        validate_in_memory(result)
+
+
+def test_check_shapes_flags_mismatched_mask_spatial_dims(consistent_spatial_photo_result):
+    result = consistent_spatial_photo_result
+    result.mask = result.mask[:, :, :16]  # truncate width
+
+    with pytest.raises(ValidationError, match="mask spatial dims"):
+        validate_in_memory(result)
+
+
+def test_validate_file_never_raises_on_corrupt_hdf5(tmp_path, consistent_spatial_photo_result):
+    """validate_file should return ok=False without raising, even on corrupt HDF5."""
+    result = consistent_spatial_photo_result
+    path = tmp_path / "corrupt.h5"
+    save(path, result)
+
+    # Write some garbage over the HDF5 file to corrupt it
+    with open(path, "wb") as f:
+        f.write(b"this is not valid HDF5 data")
+
+    # Should not raise, should return a failed report
+    report = validate_file(path)
+    assert not report.ok
+    assert len(report.failures) > 0
+    assert any("failed to load or validate" in failure for failure in report.failures)

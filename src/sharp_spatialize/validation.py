@@ -43,15 +43,35 @@ def _check_shapes(result: SpatialPhotoResult) -> list[str]:
         failures.append(f"rgb must have shape [N,H,W,3], got {result.rgb.shape}")
         return failures  # can't infer N reliably from a malformed rgb array
 
+    if result.rgb.dtype != np.uint8:
+        failures.append(f"rgb must be dtype uint8, got {result.rgb.dtype}")
+
     num_views = result.rgb.shape[0]
+    rgb_h, rgb_w = result.rgb.shape[1:3]
+
     for name, arr in (("depth", result.depth), ("mask", result.mask)):
         if arr.ndim != 3 or arr.shape[0] != num_views:
             failures.append(f"{name} must have shape [{num_views},H,W], got {arr.shape}")
+        elif arr.shape[1:3] != (rgb_h, rgb_w):
+            failures.append(f"{name} spatial dims (H,W)={arr.shape[1:3]} must match rgb {(rgb_h, rgb_w)}")
+
+    if result.mask.dtype != np.uint8:
+        failures.append(f"mask must be dtype uint8, got {result.mask.dtype}")
+
     for name, arr in (("K", result.K), ("R", result.R)):
         if arr.shape != (num_views, 3, 3):
             failures.append(f"{name} must have shape [{num_views},3,3], got {arr.shape}")
+        elif arr.dtype != np.float32:
+            failures.append(f"{name} must be dtype float32, got {arr.dtype}")
+
+    if result.depth.dtype != np.float32:
+        failures.append(f"depth must be dtype float32, got {result.depth.dtype}")
+
     if result.C.shape != (num_views, 3):
         failures.append(f"C must have shape [{num_views},3], got {result.C.shape}")
+    elif result.C.dtype != np.float32:
+        failures.append(f"C must be dtype float32, got {result.C.dtype}")
+
     return failures
 
 
@@ -178,5 +198,8 @@ def validate_in_memory(result: SpatialPhotoResult) -> None:
 
 def validate_file(path: str | Path) -> ValidationReport:
     """Load `path` and validate it, without raising."""
-    result = hdf5_io.load(path)
-    return _validate(result)
+    try:
+        result = hdf5_io.load(path)
+        return _validate(result)
+    except Exception as exc:
+        return ValidationReport(ok=False, failures=[f"failed to load or validate {path}: {exc}"])
