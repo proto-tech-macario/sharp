@@ -44,6 +44,12 @@ from .validation import ValidationError, validate_file
     help="Device for SHARP inference: cpu, mps, cuda, or default (auto-detect). "
     "Rendering always requires CUDA regardless of this setting.",
 )
+@click.option(
+    "--precision", type=click.Choice(["fp32", "fp16", "bf16"]), default="fp32",
+    show_default=True,
+    help="Autocast dtype for the CUDA forward pass. fp16 roughly halves peak VRAM "
+    "and is much faster on GPUs that would otherwise spill; fp32 is the reference.",
+)
 def generate_cli(
     input_path: Path,
     output_path: Path,
@@ -52,6 +58,7 @@ def generate_cli(
     output_height: int | None,
     checkpoint_path: Path | None,
     device: str,
+    precision: str,
 ) -> None:
     """Convert one RGB image into a 9-view spatial_photo.h5 file."""
     from .api import generate_spatial_photo
@@ -60,6 +67,7 @@ def generate_cli(
         result = generate_spatial_photo(
             input_path, angle_deg=angle_deg, output_width=output_width,
             output_height=output_height, checkpoint_path=checkpoint_path, device=device,
+            precision=precision,
         )
     except ValidationError as exc:
         click.echo(f"ERROR: generated scene failed validation: {exc}", err=True)

@@ -1,0 +1,12 @@
+# The dependency set this project is actually developed and tested against:
+# CUDA 13 / PyTorch 2.14. Upstream's requirements.txt pins torch 2.8 with the
+# CUDA 12 runtime, which is a different toolchain -- and since gsplat compiles
+# its rasterizer against whatever torch and nvcc it finds at runtime, mixing
+# the two is exactly how a working checkout stops working on another machine.
+#
+# On Linux/x86_64 PyPI's default torch wheel for these versions IS the cu130
+# build, so no extra index URL is needed. Recompile with:
+#   uv pip compile requirements-cu130.in -o requirements-cu130.txt --universal
+-e .
+torch==2.14.0
+torchvision==0.29.0

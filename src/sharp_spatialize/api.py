@@ -6,6 +6,7 @@ HDF5 packaging, and validation into one call.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,8 @@ from . import cameras, inference, render, validation
 from .hdf5_io import SpatialPhotoResult, load
 
 DEFAULT_ANGLE_DEG = 10.0
+
+ProgressCallback = Callable[[str, float], None]
 
 
 def _build_metadata(
@@ -53,22 +56,36 @@ def generate_spatial_photo(
     output_height: int | None = None,
     checkpoint_path: str | Path | None = None,
     device: str = "default",
+    precision: str = "fp32",
+    cache_predictor: bool = False,
+    on_progress: ProgressCallback | None = None,
 ) -> SpatialPhotoResult:
     """Convert one RGB image into a 9-view SpatialPhotoResult.
 
     Raises `validation.ValidationError` if the generated scene fails
     validation -- nothing is saved to disk in that case.
+
+    `precision` and `cache_predictor` are passed through to `inference.infer`.
+    `on_progress`, if given, is called as `on_progress(stage, fraction)` at each
+    stage boundary, where `fraction` is in [0, 1]; it is for reporting only and
+    must not raise.
     """
+    report = on_progress if on_progress is not None else lambda stage, fraction: None
+
     image_path = Path(image_path)
+    report("inference", 0.05)
     scene = inference.infer(
         image_path,
         checkpoint_path=Path(checkpoint_path) if checkpoint_path else None,
         device=device,
+        precision=precision,
+        cache_predictor=cache_predictor,
     )
 
     width = output_width if output_width is not None else scene.width
     height = output_height if output_height is not None else scene.height
 
+    report("rendering", 0.55)
     rig = cameras.build_camera_rig(
         scene.gaussians.mean_vectors, scene.f_px, scene.width, scene.height,
         angle_deg, width, height,
@@ -82,7 +99,9 @@ def generate_spatial_photo(
         C=np.stack([pose.C for pose in rig]),
         metadata=_build_metadata(image_path, scene, angle_deg, width, height),
     )
+    report("validating", 0.9)
     validation.validate_in_memory(result)
+    report("done", 1.0)
     return result
 
 

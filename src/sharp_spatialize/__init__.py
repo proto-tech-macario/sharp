@@ -1,7 +1,15 @@
 """sharp_spatialize: converts one RGB image into a 9-view spatial photo."""
 
+from ._buildenv import ensure_build_toolchain
 from .hdf5_io import SpatialPhotoResult
 from .validation import ValidationError
+
+# gsplat JIT-compiles its CUDA kernel on the first render, shelling out to
+# `ninja` and `nvcc` via PATH. Fix PATH up front rather than at the call site:
+# by the time rendering starts we are several lazy imports deep, and the
+# failure ("Ninja is required to load C++ extensions") points at the wrong
+# problem entirely. Cheap, idempotent, and a no-op without a CUDA toolkit.
+ensure_build_toolchain()
 
 __all__ = ["generate_spatial_photo", "load_spatial_photo", "SpatialPhotoResult", "ValidationError"]
 

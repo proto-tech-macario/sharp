@@ -165,3 +165,9 @@ cython_debug/
 *.pt
 .aider*
 .superpowers/
+
+# --- sharp-spatialize ---
+# Generated spatial photos: a single .h5 is tens of megabytes.
+*.h5
+# CUDA toolkit installers fetched during machine setup.
+cuda-keyring*.deb*

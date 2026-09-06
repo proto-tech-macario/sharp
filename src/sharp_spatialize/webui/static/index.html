@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHARP · Spatial Photo Preview</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🪟</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span class="brand-name">SHARP</span>
+      <span class="brand-sub">spatial photo preview</span>
+    </div>
+    <div class="chips">
+      <span id="deviceChip" class="chip">connecting…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button"
+           aria-label="Choose an image to spatialize">
+        <svg class="dz-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3.5 15.5v2A2.5 2.5 0 0 0 6 20h12a2.5 2.5 0 0 0 2.5-2.5v-2"
+                fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <div class="dz-title">Drop an image</div>
+        <div class="dz-sub">or <span class="link">browse</span> · JPEG, PNG, HEIC</div>
+        <input type="file" id="fileInput" accept="image/*,.heic,.heif" hidden>
+      </div>
+      <button id="sampleBtn" class="ghost-btn" hidden>Use the bundled sample photo</button>
+
+      <div class="field">
+        <label for="angle">
+          Camera angle <output id="angleOut" for="angle">10°</output>
+        </label>
+        <input type="range" id="angle" min="2" max="20" step="0.5" value="10">
+        <p class="hint">How far the 8 outer cameras orbit from the original viewpoint.
+          Larger means more parallax — and more of the scene the model has to invent.</p>
+      </div>
+
+      <div class="field">
+        <label for="maxSize">Preview resolution</label>
+        <select id="maxSize"></select>
+      </div>
+
+      <div class="field">
+        <label for="precision">Precision</label>
+        <select id="precision">
+          <option value="fp16">fp16 — fast, ~half the VRAM</option>
+          <option value="bf16">bf16 — fast, wider range</option>
+          <option value="fp32">fp32 — reference</option>
+        </select>
+      </div>
+
+      <button id="runBtn" class="primary-btn" disabled>Generate spatial photo</button>
+      <p id="statusLine" class="status-line"></p>
+
+      <div id="infoCard" class="info-card" hidden>
+        <div class="info-head">
+          <span id="validBadge" class="badge">validated</span>
+          <span id="timingText" class="info-time"></span>
+        </div>
+        <dl id="infoList" class="info-list"></dl>
+        <a id="downloadLink" class="ghost-btn" download>Download spatial_photo.h5</a>
+      </div>
+    </aside>
+
+    <section class="viewer">
+      <div class="toolbar">
+        <div class="segmented" role="group" aria-label="Layer">
+          <button class="seg active" data-mode="rgb">Color</button>
+          <button class="seg" data-mode="depth">Depth</button>
+        </div>
+        <button id="orbitBtn" class="tool-btn" disabled>
+          <span class="dot-orbit"></span> Auto-orbit
+        </button>
+        <button id="pinBtn" class="tool-btn" disabled>Pin view</button>
+        <div class="spacer"></div>
+        <div id="viewLabel" class="view-label">—</div>
+      </div>
+
+      <div id="stage" class="stage">
+        <div id="layers" class="layers"></div>
+
+        <div id="emptyState" class="overlay empty">
+          <div class="empty-inner">
+            <div class="empty-title">Nine views, one photo</div>
+            <p>Drop in an image and SHARP reconstructs the scene as 3D Gaussians, then
+              renders it from a 3&times;3 grid of virtual cameras.</p>
+            <p class="empty-hint">Once it&rsquo;s done, move your pointer across the image
+              to look around the scene.</p>
+          </div>
+        </div>
+
+        <div id="progressOverlay" class="overlay progress" hidden>
+          <div class="progress-inner">
+            <div class="spinner" aria-hidden="true"></div>
+            <div id="progressStage" class="progress-stage">Starting…</div>
+            <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+            <div id="progressNote" class="progress-note"></div>
+          </div>
+        </div>
+
+        <div id="errorOverlay" class="overlay error" hidden>
+          <div class="error-inner">
+            <div class="error-title">That run failed</div>
+            <pre id="errorText"></pre>
+          </div>
+        </div>
+
+        <div id="indicator" class="indicator" hidden aria-hidden="true"></div>
+        <div id="parallaxHint" class="parallax-hint" hidden>move to look around</div>
+      </div>
+
+      <div id="sheet" class="sheet" hidden></div>
+    </section>
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
