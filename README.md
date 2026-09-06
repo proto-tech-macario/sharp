@@ -19,6 +19,86 @@ We present SHARP, an approach to photorealistic view synthesis from a single ima
 
 ## Getting started
 
+There are two ways to install this repo, and they are **not** interchangeable — pick based
+on what you want:
+
+- **[Quick start](#quick-start-the-web-ui-and-spatial-photos)** — this fork's
+  `sharp_spatialize` tools, including the web UI. Requires an NVIDIA GPU.
+  **Start here if you want the web app.**
+- **[Upstream install](#upstream-install-the-sharp-model-only)** — Apple's original SHARP
+  model and `sharp` CLI only. Runs on CPU, CUDA, or MPS.
+
+### Quick start: the web UI and spatial photos
+
+#### 1. Check the requirements
+
+| What | Why |
+| --- | --- |
+| **An NVIDIA GPU** | `gsplat`, the renderer, ships no CPU or MPS kernel. This is not optional. |
+| **NVIDIA driver** | `nvidia-smi` must run. |
+| **CUDA toolkit (`nvcc`)** | **The driver alone is not enough.** `gsplat` compiles its rasterizer from source on the first render, which needs the full toolkit. Ubuntu/Debian: `sudo apt install cuda-toolkit-13-0`; otherwise [download it](https://developer.nvidia.com/cuda-downloads). |
+| **Python 3.13** | |
+| [`uv`](https://docs.astral.sh/uv/) | Optional. Used if present; otherwise the installer falls back to `venv` + `pip`, which is slower. |
+
+A missing CUDA toolkit is the single most common reason a fresh install gets all the way to
+its first render and only then dies, so `setup.sh` checks for it before installing anything.
+
+#### 2. Install
+
+```
+git clone https://github.com/proto-tech-macario/sharp.git
+cd sharp
+./setup.sh
+```
+
+`setup.sh` verifies the driver and `nvcc`, builds `.venv` from the pinned
+`requirements-cu130.txt`, and then confirms that torch can actually see your GPU and that
+`ninja` and `nvcc` are reachable. It fails early with a specific message rather than
+letting you discover a broken toolchain later.
+
+To re-verify an environment you already built, installing nothing:
+
+```
+./setup.sh --check
+```
+
+#### 3. Run the web UI
+
+```
+.venv/bin/sharp-spatialize-webui --open
+```
+
+This opens <http://127.0.0.1:8737/>. Drop in a photo, press **Generate spatial photo**, and
+download the resulting `.h5`. There is a bundled sample image if you just want to see it
+work. Every option is documented under
+[Spatial photo authoring](#spatial-photo-authoring-fork-addition).
+
+> [!IMPORTANT]
+> **The first render takes roughly 5 minutes and prints nothing while it works.** That is
+> `gsplat` compiling its CUDA extension; it is cached in `~/.cache/torch_extensions`, so
+> every render after that takes seconds. The model checkpoint also downloads once, to
+> `~/.cache/torch/hub/checkpoints/`. Nothing is stuck — let it finish.
+
+To avoid prefixing every command with `.venv/bin/`, activate the environment:
+
+```
+source .venv/bin/activate
+```
+
+#### Why this fork pins its own dependencies
+
+Upstream's `requirements.txt` pins torch 2.8 with the CUDA 12 runtime. This fork is
+developed and tested against CUDA 13 / PyTorch 2.14, locked in `requirements-cu130.txt`,
+because `gsplat` compiles its rasterizer against whatever torch and `nvcc` it finds at
+runtime — mixing the two toolchains is exactly how a working checkout stops working on
+another machine. Use `setup.sh` (which uses the CUDA 13 lockfile) rather than the upstream
+instructions below if you want the spatial photo tools.
+
+### Upstream install: the SHARP model only
+
+Apple's original instructions, kept verbatim. These give you the `sharp` CLI and the model
+on CPU, CUDA, or MPS — but **not** the `sharp_spatialize` tools above.
+
 We recommend to first create a python environment:
 
 ```
@@ -143,17 +223,10 @@ sharp-spatialize-validate photo_spatial.h5
 
 It exits non-zero and lists each failure if the file is not a valid spatial photo.
 
-### Installing this fork
+### Installing
 
-Upstream's `requirements.txt` pins torch 2.8 with the CUDA 12 runtime. This fork is
-developed and tested against CUDA 13 / PyTorch 2.14, locked in `requirements-cu130.txt`,
-because `gsplat` compiles its rasterizer against whatever torch and nvcc it finds at
-runtime — mixing the two toolchains is how a working checkout breaks on another machine.
-
-```
-./setup.sh          # build .venv from the CUDA 13 lockfile and verify the toolchain
-./setup.sh --check  # verify an existing venv, build nothing
-```
+See the [Quick start](#quick-start-the-web-ui-and-spatial-photos) above: `./setup.sh`
+builds the environment and checks the CUDA toolchain these tools need.
 
 ## Evaluation
 
