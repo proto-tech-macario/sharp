@@ -11,6 +11,12 @@ Tian Fang, Yanghai Tsin, Stephan Richter and Vladlen Koltun_.
 
 We present SHARP, an approach to photorealistic view synthesis from a single image. Given a single photograph, SHARP regresses the parameters of a 3D Gaussian representation of the depicted scene. This is done in less than a second on a standard GPU via a single feedforward pass through a neural network. The 3D Gaussian representation produced by SHARP can then be rendered in real time, yielding high-resolution photorealistic images for nearby views. The representation is metric, with absolute scale, supporting metric camera movements. Experimental results demonstrate that SHARP delivers robust zero-shot generalization across datasets. It sets a new state of the art on multiple datasets, reducing LPIPS by 25–34% and DISTS by 21–43% versus the best prior model, while lowering the synthesis time by three orders of magnitude.
 
+> [!NOTE]
+> **This is a fork of [`apple/ml-sharp`](https://github.com/apple/ml-sharp).**
+> The README below is upstream Apple's, describing the SHARP model and its `sharp` CLI.
+> This fork adds `sharp_spatialize`, a browser UI and CLI that turn a single photo into a
+> 9-view spatial photo — see **[Spatial photo authoring](#spatial-photo-authoring-fork-addition)**.
+
 ## Getting started
 
 We recommend to first create a python environment:
@@ -64,6 +70,89 @@ sharp predict -i /path/to/input/images -o /path/to/output/gaussians --render
 
 # Or from the intermediate gaussians:
 sharp render -i /path/to/output/gaussians -o /path/to/output/renderings
+```
+
+## Spatial photo authoring (fork addition)
+
+> Not part of upstream `apple/ml-sharp`. Added in this fork as the `sharp_spatialize` package.
+
+`sharp_spatialize` turns a single photo into a **spatial photo**: a 9-view capture — the
+original viewpoint plus 8 cameras orbiting around it — written to one HDF5 file. It uses
+SHARP for the 3D Gaussian prediction and `gsplat` to render the extra views.
+
+**Rendering requires a CUDA GPU.** `gsplat` ships no CPU or MPS kernel, and every entry
+point below renders, so a working NVIDIA driver is a hard requirement here even though
+plain Gaussian prediction runs anywhere.
+
+### Web UI
+
+The quickest way in — drop a photo in the browser, set the camera angle, preview the
+result, download the `.h5`:
+
+```
+sharp-spatialize-webui --open
+```
+
+That serves <http://127.0.0.1:8737/>. It is a standard-library `ThreadingHTTPServer`:
+no framework, nothing extra to install, and it binds to loopback only. Generation runs on
+a worker thread serialized by a GPU lock, so status stays responsive while the GPU is busy.
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--host` | `127.0.0.1` | Bind address. |
+| `--port` | `8737` | Port. |
+| `-c`, `--checkpoint` | auto-download | SHARP checkpoint path. |
+| `--device` | `default` | `cpu`, `mps`, `cuda`, or auto-detect. |
+| `--precision` | `fp16` | `fp32`, `fp16`, or `bf16`. |
+| `--open` | off | Open a browser on startup. |
+
+In the page you can set the camera angle (2–20°), preview resolution (640–2048 px,
+default 1280), and precision. Uploads accept JPEG, PNG, and HEIC up to 64 MB. Each finished
+job shows the 9 rendered views, their depth maps, timings, and a validation badge, and
+offers the `spatial_photo.h5` as a download. A bundled sample photo is offered when running
+from a source checkout, so you can try it without supplying an image.
+
+`python -m sharp_spatialize.webui` is equivalent to the `sharp-spatialize-webui` command.
+
+### CLI
+
+One image in, one spatial photo out:
+
+```
+sharp-spatialize -i photo.jpg -o photo_spatial.h5
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-i`, `--input` | *required* | Input JPEG/PNG image. |
+| `-o`, `--output` | *required* | Output `.h5` path. |
+| `--angle` | `10.0` | Camera angle in degrees. Any positive float; 5, 10, and 15 are the validated values. |
+| `--width` / `--height` | source size | Output dimensions in pixels. |
+| `-c`, `--checkpoint` | auto-download | SHARP checkpoint path. |
+| `--device` | `default` | `cpu`, `mps`, `cuda`, or auto-detect. |
+| `--precision` | `fp32` | `fp32`, `fp16`, or `bf16`. `fp16` roughly halves peak VRAM. |
+
+Note the default precision differs by entry point: the CLI defaults to `fp32` (the
+reference), the web UI to `fp16` (faster, about half the VRAM).
+
+To check an existing file — no SHARP or CUDA needed, so it works anywhere:
+
+```
+sharp-spatialize-validate photo_spatial.h5
+```
+
+It exits non-zero and lists each failure if the file is not a valid spatial photo.
+
+### Installing this fork
+
+Upstream's `requirements.txt` pins torch 2.8 with the CUDA 12 runtime. This fork is
+developed and tested against CUDA 13 / PyTorch 2.14, locked in `requirements-cu130.txt`,
+because `gsplat` compiles its rasterizer against whatever torch and nvcc it finds at
+runtime — mixing the two toolchains is how a working checkout breaks on another machine.
+
+```
+./setup.sh          # build .venv from the CUDA 13 lockfile and verify the toolchain
+./setup.sh --check  # verify an existing venv, build nothing
 ```
 
 ## Evaluation
