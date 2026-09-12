@@ -172,3 +172,17 @@ class SequenceReader:
         """All frame timestamps (seconds), without loading any pixel data."""
         with h5py.File(self.path, "r") as f:
             return np.array([f["frames"][key].attrs["timestamp"] for key in self._keys])
+
+    def frame_attrs(self) -> list[dict]:
+        """Timestamp, PTS and source frame index of every frame, without pixel data."""
+        rows = []
+        with h5py.File(self.path, "r") as f:
+            for key in self._keys:
+                attrs = f["frames"][key].attrs
+                pts, source = int(attrs["pts"]), int(attrs["source_frame_index"])
+                rows.append({
+                    "timestamp": float(attrs["timestamp"]),
+                    "pts": None if pts == _NO_VALUE else pts,
+                    "source_frame_index": None if source == _NO_VALUE else source,
+                })
+        return rows
