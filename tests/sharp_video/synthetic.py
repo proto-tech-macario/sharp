@@ -28,14 +28,17 @@ def _mean_vectors(plane_z: float) -> torch.Tensor:
     return points.unsqueeze(0)
 
 
-def _render_plane(K, R, C, width, height, plane_z, phase):
+def _render_plane(K, R, C, width, height, plane_z, phase, tilt=0.0):
+    """Ray-cast the plane z = plane_z + tilt * x (world) through camera (K, R, C)."""
     fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
     v_grid, u_grid = np.mgrid[0:height, 0:width].astype(np.float64)
     dir_cam = np.stack([(u_grid - cx) / fx, (v_grid - cy) / fy, np.ones_like(u_grid)], axis=-1)
     dir_world = dir_cam @ R
-    denom = dir_world[..., 2]
+    # Plane n . X = plane_z with n = (-tilt, 0, 1).
+    denom = dir_world[..., 2] - tilt * dir_world[..., 0]
     valid = np.abs(denom) > 1e-8
-    t = np.divide(plane_z - C[2], denom, out=np.full_like(denom, -1.0), where=valid)
+    t = np.divide(plane_z - (C[2] - tilt * C[0]), denom, out=np.full_like(denom, -1.0),
+                  where=valid)
     valid &= t > 1e-6
     world_xy = C[:2] + t[..., None] * dir_world[..., :2]
     valid &= (np.abs(world_xy[..., 0]) <= PLANE_HALF_EXTENT) & (
@@ -70,13 +73,19 @@ def stage1_metadata(width: int, height: int) -> dict:
 
 
 def make_stage1_result(
-    width: int = 32, height: int = 32, plane_z: float = 5.0, phase: float = 0.0
+    width: int = 32, height: int = 32, plane_z: float = 5.0, phase: float = 0.0,
+    tilt: float = 0.0,
 ) -> SpatialPhotoResult:
-    """One consistent 9-view Stage 1 result of a plane at depth `plane_z`."""
+    """One consistent 9-view Stage 1 result of a plane at depth `plane_z`.
+
+    `tilt` slopes the plane (z = plane_z + tilt * x) so that no view -- the
+    centre one included -- sees a single constant depth.
+    """
     rig = build_camera_rig(
         _mean_vectors(plane_z), F_PX, width, height, 10.0, width, height,
     )
-    rendered = [_render_plane(p.K, p.R, p.C, width, height, plane_z, phase) for p in rig]
+    rendered = [_render_plane(p.K, p.R, p.C, width, height, plane_z, phase, tilt)
+                for p in rig]
     return SpatialPhotoResult(
         rgb=np.stack([r[0] for r in rendered]),
         depth=np.stack([r[1] for r in rendered]),
@@ -95,12 +104,14 @@ def make_frames(
     fps: float = 30.0,
     drift: float = 0.0,
     motion: float = 0.0,
+    tilt: float = 0.0,
 ) -> list[SpatialFrame]:
     """`num_frames` consecutive frames; `drift` moves the plane (and so the rig)
-    by that many metres per frame, `motion` slides the texture per frame."""
+    by that many metres per frame, `motion` slides the texture per frame, and
+    `tilt` slopes the plane (see `make_stage1_result`)."""
     return [
         SpatialFrame.from_stage1(
-            make_stage1_result(width, height, 5.0 + drift * t, motion * t),
+            make_stage1_result(width, height, 5.0 + drift * t, motion * t, tilt),
             timestamp=t / fps,
             pts=t * 512,
             source_frame_index=t,

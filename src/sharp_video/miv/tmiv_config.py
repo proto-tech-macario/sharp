@@ -177,6 +177,7 @@ def decoder_config(bitstream_path) -> dict:
         "inputDirectory": ".",
         "outputDirectory": ".",
         "outputMultiviewGeometryPathFmt": "decoded/{3:02}_geo_{4}x{5}_{6}.yuv",
+        "outputMultiviewOccupancyPathFmt": "decoded/{3:02}_occ_{4}x{5}_{6}.yuv",
         "outputMultiviewTexturePathFmt": "decoded/{3:02}_tex_{4}x{5}_{6}.yuv",
         "outputSequenceConfigPathFmt": "decoded/seq_{3:06}.json",
     }

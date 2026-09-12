@@ -37,8 +37,14 @@ def depth_to_geometry(
 def geometry_to_depth(
     samples: np.ndarray, near: float, far: float, bit_depth: int = 16
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Inverse of `depth_to_geometry`: returns (depth float32 metres, mask uint8)."""
-    _check_range(near, far)
+    """Inverse of `depth_to_geometry`: returns (depth float32 metres, mask uint8).
+
+    `near == far` is allowed here: TMIV's dynamic depth range can shrink a
+    decoded view's range to a single depth when all of its content lies at one
+    distance, and every valid sample then decodes to that depth.
+    """
+    if not 0.0 < near <= far:
+        raise ValueError(f"depth range must satisfy 0 < near <= far, got near={near}, far={far}")
     max_sample = (1 << bit_depth) - 1
     valid = samples > 0
     level = samples.astype(np.float64) / max_sample

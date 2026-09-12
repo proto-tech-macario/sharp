@@ -116,6 +116,14 @@ def test_depth_out_of_range_is_clamped_and_counted():
     assert back[0, 2] == pytest.approx(3.0, rel=1e-3)
 
 
+def test_decoding_a_single_depth_range():
+    # TMIV's dynamic depth range yields near == far for a view whose content sits at one depth.
+    samples = np.array([[0, 1, 700, 1023]], dtype=np.uint16)
+    depth, mask = geometry_to_depth(samples, 5.0, 5.0, bit_depth=10)
+    np.testing.assert_array_equal(mask, [[0, 1, 1, 1]])
+    np.testing.assert_allclose(depth, [[0.0, 5.0, 5.0, 5.0]], rtol=1e-6)
+
+
 def test_depth_range_must_be_ordered():
     with pytest.raises(ValueError):
         depth_to_geometry(np.ones((2, 2), np.float32), np.ones((2, 2), np.uint8), 5.0, 1.0)
