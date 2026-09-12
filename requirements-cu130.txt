@@ -4,6 +4,8 @@
     # via -r requirements-cu130.in
 anyio==4.15.1
     # via httpx
+av==18.1.0
+    # via sharp
 certifi==2026.7.22
     # via
     #   httpcore

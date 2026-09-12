@@ -91,6 +91,15 @@ import torch
 
 ok = True
 
+# Stage 2 (video -> MIV): PyAV for decoding, and the package itself.
+try:
+    import av
+    import sharp_video.miv  # noqa: F401
+    print(f"  PyAV           {av.__version__}")
+except ImportError as exc:
+    print(f"  FAIL: Stage 2 (sharp_video) cannot be imported: {exc}")
+    ok = False
+
 print(f"  torch          {torch.__version__}")
 print(f"  torch CUDA     {torch.version.cuda}")
 

@@ -275,6 +275,10 @@ sharp-miv-validate   output.miv --reference sequence.h5          # independent d
 Formats and design: [`docs/stage2_sequence_format.md`](docs/stage2_sequence_format.md),
 [`docs/stage2_miv.md`](docs/stage2_miv.md).
 
+**On Windows:** follow [`docs/windows.md`](docs/windows.md) (WSL2 + Ubuntu 24.04,
+step by step). It also shows how to return to Stage 1: Stage 2 lives only on the
+`stage2-video-to-miv` branch, while `main` and the `stage1` tag stay exactly Stage 1.
+
 ## Evaluation
 
 Please refer to the paper for both quantitative and qualitative evaluations.

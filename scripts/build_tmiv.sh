@@ -97,13 +97,20 @@ EOF
 EOF
     ;;
   Linux)
+    # TMIV's gcc preset compiles with -Werror; a newer GCC than TMIV's CI adds
+    # warnings that would stop the build, so keep its warnings but not -Werror.
+    # HM (a dependency) still uses the C++17-removed 'register' keyword.
     PRESET="sharp-linux-release"
+    export CXXFLAGS="-Wno-register"
     cat > "$SRC/CMakeUserPresets.json" <<'EOF'
 {
   "version": 3,
   "configurePresets": [
     {"name": "sharp-linux-release", "inherits": ["gcc-release"],
-     "cacheVariables": {"BUILD_TESTING": "OFF"}}
+     "cacheVariables": {
+       "BUILD_TESTING": "OFF",
+       "CMAKE_CXX_FLAGS": "-Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wno-maybe-uninitialized -Wold-style-cast -Wno-alloc-size-larger-than"
+     }}
   ]
 }
 EOF

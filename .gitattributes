@@ -1,0 +1,5 @@
+# Keep LF line endings even in a checkout made with Git for Windows:
+# bash scripts with CRLF fail ("/bin/bash^M: bad interpreter"), and the TMIV
+# patch would no longer apply.
+*.sh     text eol=lf
+*.patch  text eol=lf
