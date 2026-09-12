@@ -23,6 +23,11 @@ sharp = "sharp.cli:main_cli"
 sharp-spatialize = "sharp_spatialize.cli:generate_cli"
 sharp-spatialize-validate = "sharp_spatialize.cli:validate_cli"
 sharp-spatialize-webui = "sharp_spatialize.webui.server:main"
+sharp_video_to_miv = "sharp_video.cli:video_to_miv_cli"
+sharp-video-validate = "sharp_video.cli:validate_sequence_cli"
+sharp-video-inspect = "sharp_video.cli:inspect_cli"
+sharp-miv-encode = "sharp_video.cli:miv_encode_cli"
+sharp-miv-validate = "sharp_video.cli:miv_validate_cli"
 
 [project.urls]
 Homepage = "https://github.com/apple/ml-sharp"
