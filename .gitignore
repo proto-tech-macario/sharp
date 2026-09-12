@@ -171,3 +171,11 @@ cython_debug/
 *.h5
 # CUDA toolkit installers fetched during machine setup.
 cuda-keyring*.deb*
+
+# --- sharp-video (Stage 2) ---
+# TMIV build from scripts/build_tmiv.sh (source, dependencies, binaries).
+.tmiv/
+# MIV bitstreams and per-run work directories.
+*.miv
+*.miv.json
+*.work/

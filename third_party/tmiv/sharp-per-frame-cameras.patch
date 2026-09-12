@@ -1,0 +1,82 @@
+diff --git a/source/Encoder/app/Encoder_main.cpp b/source/Encoder/app/Encoder_main.cpp
+index 02b7528..93a0eb7 100644
+--- a/source/Encoder/app/Encoder_main.cpp
++++ b/source/Encoder/app/Encoder_main.cpp
+@@ -91,6 +91,15 @@ public:
+     json().checkForUnusedKeys();
+ 
+     for (int32_t i = 0; i < m_placeholders.numberOfInputFrames; ++i) {
++      // Per-frame camera parameters (SHARP Stage 2): when a sequence configuration exists for
++      // this frame (inputSequenceConfigPathFmt uses the frame index placeholder {3}), its view
++      // poses replace those of the previous frame and are coded as MIV view parameter updates.
++      if (0 < i) {
++        if (auto sequenceConfig = IO::tryLoadSequenceConfig(json(), m_placeholders, i)) {
++          m_sequenceConfig = std::move(*sequenceConfig);
++          supportExperimentsThatUseASubsetOfTheCameras();
++        }
++      }
+       m_assessor.encode({m_sequenceConfig, m_sequenceConfig.sourceViewParams(),
+                          IO::loadMultiviewFrame(json(), m_placeholders, m_sequenceConfig, i)});
+     }
+diff --git a/source/Encoder/src/Encoder.cpp b/source/Encoder/src/Encoder.cpp
+index 92eb9fe..b93c616 100644
+--- a/source/Encoder/src/Encoder.cpp
++++ b/source/Encoder/src/Encoder.cpp
+@@ -73,6 +73,8 @@ public:
+   void process(std::vector<SourceUnit> buffer, const Common::StageSource<CodableUnit> &source_) {
+     if (m_firstIdx == 0) {
+       prepareSequence(buffer.front());
++    } else {
++      updateViewPoses(buffer.front());
+     }
+ 
+     m_params.foc = m_firstIdx % m_config.intraPeriod;
+@@ -569,6 +571,25 @@ private:
+     }
+   }
+ 
++  // Per-frame camera poses (SHARP Stage 2): update the transported view poses for this access
++  // unit. Only the extrinsics may change; EncodeMiv then codes them as view parameter updates.
++  void updateViewPoses(const SourceUnit &unit) {
++    const auto &viewParamsList = unit.viewParamsList;
++    if (viewParamsList.size() != m_transportViewParams.size() ||
++        viewParamsList.size() != m_params.viewParamsList.size()) {
++      throw std::runtime_error("The number of views may not change within a sequence");
++    }
++    for (size_t i = 0; i < viewParamsList.size(); ++i) {
++      if (viewParamsList[i].ci != m_transportViewParams[i].ci ||
++          viewParamsList[i].dq != m_transportViewParams[i].dq) {
++        throw std::runtime_error("View " + viewParamsList[i].name +
++                                 ": only the pose may change between frames");
++      }
++      m_transportViewParams[i].pose = viewParamsList[i].pose;
++      m_params.viewParamsList[i].pose = viewParamsList[i].pose;
++    }
++  }
++
+   void prepareAccessUnit() {
+     m_transportViews.clear();
+     m_aggregatedEntityMask.clear();
+diff --git a/source/ViewOptimizer/src/ViewOptimizerStage.cpp b/source/ViewOptimizer/src/ViewOptimizerStage.cpp
+index a4f6825..61a299b 100644
+--- a/source/ViewOptimizer/src/ViewOptimizerStage.cpp
++++ b/source/ViewOptimizer/src/ViewOptimizerStage.cpp
+@@ -47,7 +47,17 @@ void ViewOptimizerStage::encode(SourceUnit unit) {
+   if (!m_params) {
+     m_params = m_optimizer->optimizeParams({unit.viewParamsList, unit.depthLowQualityFlag});
+   }
+-  unit.viewParamsList = m_params->viewParamsList;
++  // Per-frame camera poses (SHARP Stage 2): the view selection is made once per sequence, but
++  // each frame's source poses are carried through so that pose changes reach the encoder.
++  auto viewParamsList = m_params->viewParamsList;
++  for (auto &viewParams : viewParamsList) {
++    for (const auto &sourceViewParams : unit.viewParamsList) {
++      if (sourceViewParams.name == viewParams.name) {
++        viewParams.pose = sourceViewParams.pose;
++      }
++    }
++  }
++  unit.viewParamsList = std::move(viewParamsList);
+   unit.deepFrameList = m_optimizer->optimizeFrame(std::move(unit.deepFrameList));
+   unit.semiBasicViewCount = m_params->semiBasicCount;
+   source.encode(unit);
