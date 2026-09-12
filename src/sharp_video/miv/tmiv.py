@@ -53,12 +53,21 @@ class TmivInstall:
         return self.root / "src"
 
     @property
+    def install_dir(self) -> Path:
+        return self.root / "install"
+
+    @property
     def bin_dir(self) -> Path:
-        return self.root / "install" / "bin"
+        return self.install_dir / "bin"
 
     @property
     def encode_script(self) -> Path:
         return self.source_dir / "scripts" / "encode.py"
+
+    @property
+    def vvenc_config(self) -> Path:
+        """The VVenC configuration TMIV's own tests use (random access, IntraPeriod 32)."""
+        return self.source_dir / "config" / "test" / "vvenc.cfg"
 
     @property
     def marker(self) -> dict:

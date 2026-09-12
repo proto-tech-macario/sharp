@@ -52,6 +52,9 @@ addopts = "-ra -q"
 testpaths = [
     "tests"
 ]
+markers = [
+    "slow: runs real TMIV/CUDA tools; seconds to minutes",
+]
 filterwarnings = [
     "ignore::DeprecationWarning"
 ]
