@@ -52,10 +52,12 @@ class SpatialFrame:
 
     @property
     def height(self) -> int:
+        """View height in pixels."""
         return int(self.views[0].rgb.shape[0])
 
     @property
     def width(self) -> int:
+        """View width in pixels."""
         return int(self.views[0].rgb.shape[1])
 
     def stacked(self) -> dict[str, np.ndarray]:

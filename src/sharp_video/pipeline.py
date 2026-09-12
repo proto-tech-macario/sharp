@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .contract import SequenceInfo
-from .miv.encoder import MIVEncodeResult, MIVEncoder, MIVEncoderConfig, encode_sequence
+from .miv.encoder import MIVEncoder, MIVEncoderConfig, MIVEncodeResult, encode_sequence
 from .miv.tmiv import TmivInstall, find_tmiv, run_logged
 from .report import build_report, peak_rss_bytes, write_report
 from .runner import process_frames
@@ -37,6 +37,8 @@ def default_output_size(width: int, height: int) -> tuple[int, int]:
 
 @dataclass
 class PipelineOptions:
+    """Settings for `run_video_to_miv`; `sharp_video_to_miv --help` explains each."""
+
     input: Path
     output: Path
     mode: str = "two-step"
@@ -66,6 +68,8 @@ class PipelineOptions:
 
 @dataclass
 class PipelineResult:
+    """What a pipeline run produced."""
+
     miv: MIVEncodeResult
     sequence_path: Path | None
     report: dict

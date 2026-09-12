@@ -24,6 +24,8 @@ _K_TOLERANCE = 1e-6
 
 @dataclass
 class SequenceReport:
+    """Outcome of `validate_sequence`."""
+
     ok: bool
     failures: list[str] = field(default_factory=list)
     frame_count: int = 0

@@ -96,6 +96,10 @@ class Stage1Spatializer:
         precision: str = "fp32",
         generate: Callable | None = None,
     ):
+        """Hand frames to Stage 1 as PNGs under `work_dir/png`.
+
+        `generate` replaces the Stage 1 call (used by tests).
+        """
         self.png_dir = Path(work_dir) / "png"
         self.png_dir.mkdir(parents=True, exist_ok=True)
         self.camera = camera
@@ -106,6 +110,7 @@ class Stage1Spatializer:
         self._generate = generate or _stage1_generate
 
     def __call__(self, frame: DecodedFrame) -> tuple[SpatialFrame, FrameTimings]:
+        """Spatialize one decoded frame; returns the spatial frame and its timings."""
         png_path = self.png_dir / f"{frame.index:06d}.png"
         marks: dict[str, float] = {}
 

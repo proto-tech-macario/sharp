@@ -6,18 +6,18 @@ import json
 
 import pytest
 from fakes import FakeRunner, FakeSpatializer
-from test_video_io import _write_video
-
 from sharp_video.miv.tmiv import TmivInstall
 from sharp_video.miv.tmiv_config import VIEW_NAMES, geometry_input_path, texture_input_path
 from sharp_video.pipeline import PipelineOptions, default_output_size, run_video_to_miv
 from sharp_video.runner import FrameFailuresError
 from sharp_video.scheduler import FrameSelection
 from sharp_video.sequence_io import SequenceReader
+from test_video_io import _write_video
 
 
 @pytest.fixture(scope="module")
 def clip(tmp_path_factory):
+    """A 6-frame 30000/1001 fps H.264 clip."""
     return _write_video(tmp_path_factory.mktemp("clip") / "clip.mp4", n=6)
 
 
@@ -33,12 +33,14 @@ def _run(tmp_path, clip, **kwargs):
 
 
 def test_default_output_size_rounds_down_to_multiple_of_8():
+    """Default output size rounds down to multiple of 8."""
     assert default_output_size(1920, 1080) == (1920, 1080)
     assert default_output_size(1918, 1078) == (1912, 1072)
     assert default_output_size(64, 48) == (64, 48)
 
 
 def test_two_step_mode_writes_sequence_then_miv(tmp_path, clip):
+    """Two step mode writes sequence then miv."""
     result, runner = _run(tmp_path, clip)
     assert result.sequence_path == tmp_path / "work" / "sequence.h5"
     reader = SequenceReader(result.sequence_path)
@@ -50,6 +52,7 @@ def test_two_step_mode_writes_sequence_then_miv(tmp_path, clip):
 
 
 def test_streaming_mode_with_dump_matches_two_step(tmp_path, clip):
+    """Streaming mode with dump matches two step."""
     two = tmp_path / "two"
     two.mkdir()
     streaming = tmp_path / "streaming"
@@ -71,12 +74,14 @@ def test_streaming_mode_with_dump_matches_two_step(tmp_path, clip):
 
 
 def test_streaming_without_dump_writes_no_sequence(tmp_path, clip):
+    """Streaming without dump writes no sequence."""
     result, _ = _run(tmp_path, clip, mode="streaming")
     assert result.sequence_path is None
     assert not (tmp_path / "work" / "sequence.h5").exists()
 
 
 def test_selection_is_applied_and_timing_retained(tmp_path, clip):
+    """Selection is applied and timing retained."""
     result, _ = _run(tmp_path, clip, selection=FrameSelection(start_frame=2, max_frames=3))
     manifest = json.loads(result.miv.manifest_path.read_text())
     assert [f["source_frame_index"] for f in manifest["frames"]] == [2, 3, 4]
@@ -84,6 +89,7 @@ def test_selection_is_applied_and_timing_retained(tmp_path, clip):
 
 
 def test_failed_frame_stops_before_miv(tmp_path, clip):
+    """Failed frame stops before miv."""
     options = PipelineOptions(input=clip, output=tmp_path / "out.miv", output_size=(32, 32),
                               work_dir=tmp_path / "work")
     runner = FakeRunner()
@@ -95,6 +101,7 @@ def test_failed_frame_stops_before_miv(tmp_path, clip):
 
 
 def test_report_has_every_performance_field(tmp_path, clip):
+    """Report has every performance field."""
     result, _ = _run(tmp_path, clip)
     report = json.loads((tmp_path / "out.miv.report.json").read_text())
     assert result.report_paths == (tmp_path / "out.miv.report.json",
@@ -118,3 +125,33 @@ def test_report_has_every_performance_field(tmp_path, clip):
         assert key in overall
     markdown = (tmp_path / "out.miv.report.md").read_text()
     assert "Average processing FPS" in markdown and "MIV file size" in markdown
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("mode", ["two-step", "streaming"])
+def test_real_tmiv_pipeline_on_h264_clip(tmp_path, clip, mode, monkeypatch):
+    """H.264 clip -> (fake) Stage 1 -> real TMIV -> MIV that TmivDecoder validates."""
+    from pathlib import Path
+
+    from sharp_video.miv.tmiv import TmivNotFoundError, find_tmiv
+    from sharp_video.miv.validate import validate_miv
+
+    try:
+        tmiv = find_tmiv()
+    except TmivNotFoundError as exc:
+        pytest.skip(str(exc))
+    monkeypatch.chdir(tmp_path)  # anything written to the cwd would land here
+
+    options = PipelineOptions(
+        input=clip, output=tmp_path / "out.miv", mode=mode, output_size=(64, 64),
+        work_dir=tmp_path / "work", dump_hdf5=tmp_path / "seq.h5", intra_period=16, threads=2,
+    )
+    result = run_video_to_miv(options, spatialize=FakeSpatializer(64, 64, drift=0.1, tilt=0.4),
+                              tmiv=tmiv)
+    assert result.miv.frame_count == 6
+
+    report = validate_miv(result.miv.path, SequenceReader(result.sequence_path),
+                          tmp_path / "dec", tmiv=tmiv)
+    assert report.ok, report.failures
+    assert report.stats["camera_update_frames"] == list(range(6))
+    assert not (Path(tmp_path) / "rec.yuv").exists()

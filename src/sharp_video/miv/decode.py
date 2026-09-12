@@ -70,6 +70,7 @@ class DecodedMiv:
     """TmivDecoder's reconstruction of an MIV file, read back frame by frame."""
 
     def __init__(self, decoded_dir: Path, frame_count: int, parser_dump: Path | None = None):
+        """Read TmivDecoder's output in `decoded_dir`: per-frame cameras and view files."""
         self.decoded_dir = Path(decoded_dir)
         self.frame_count = frame_count
         self.parser_dump = parser_dump
@@ -154,9 +155,9 @@ def decode_miv(
         tmiv.exe("TmivDecoder"), "-c", config_path,
         "-p", "inputDirectory", work_dir, "-p", "outputDirectory", work_dir,
         "-s", CONTENT_ID, "-r", RATE_ID, "-n", str(frame_count), "-N", str(frame_count),
-    ], work_dir / "logs" / "decode.log")
+    ], work_dir / "logs" / "decode.log", cwd=work_dir)
 
     parser_dump = work_dir / "parsed.hls"
     runner([tmiv.exe("TmivParser"), "-b", miv_path, "-o", parser_dump],
-           work_dir / "logs" / "parse.log")
+           work_dir / "logs" / "parse.log", cwd=work_dir)
     return DecodedMiv(work_dir / "decoded", frame_count, parser_dump)

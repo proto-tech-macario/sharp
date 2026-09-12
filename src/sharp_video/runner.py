@@ -37,6 +37,7 @@ class FrameFailuresError(RuntimeError):
     """One or more selected frames failed Stage 1; see `.failures`."""
 
     def __init__(self, failures: list[dict]):
+        """An error listing `failures` (dicts with index, pts, timestamp, error)."""
         self.failures = failures
         summary = ", ".join(f"frame {f['index']} ({f['error']})" for f in failures)
         super().__init__(f"{len(failures)} frame(s) failed Stage 1: {summary}")
@@ -44,6 +45,8 @@ class FrameFailuresError(RuntimeError):
 
 @dataclass
 class FrameOutcome:
+    """One spatialized frame, fresh from Stage 1 or from the resume cache."""
+
     frame: SpatialFrame
     timings: FrameTimings | None  # None when the frame came from the resume cache
     cached: bool

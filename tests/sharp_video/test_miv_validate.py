@@ -6,18 +6,18 @@ import copy
 
 import numpy as np
 import pytest
-from synthetic import make_frames, make_info
-
 from sharp_video.miv.decode import DecodedView
 from sharp_video.miv.tmiv_config import VIEW_NAMES
 from sharp_video.miv.validate import Thresholds, compare_to_reference
 from sharp_video.sequence_io import SequenceReader, SequenceWriter
+from synthetic import make_frames, make_info
 
 
 class FakeDecoded:
     """Duck-types DecodedMiv from a list of SpatialFrames."""
 
     def __init__(self, frames, fps=30.0, width=32, height=32):
+        """Configure the test double."""
         self.frame_count = len(frames)
         self.fps = fps
         self.resolution = (width, height)
@@ -25,6 +25,7 @@ class FakeDecoded:
         self._frames = frames
 
     def frames(self):
+        """Yield `{view_name: DecodedView}` per frame, like `DecodedMiv.frames()`."""
         for frame in self._frames:
             yield {
                 name: DecodedView(rgb=v.rgb, depth=v.depth, mask=v.mask, K=v.K, R=v.R, C=v.C)
@@ -34,6 +35,7 @@ class FakeDecoded:
 
 @pytest.fixture
 def reference(tmp_path):
+    """A 3-frame drifting reference sequence and its frames."""
     frames = make_frames(3, drift=0.3)
     path = tmp_path / "seq.h5"
     with SequenceWriter(path, make_info()) as writer:
@@ -48,6 +50,7 @@ def _manifest(frames, fps=30.0):
 
 
 def test_perfect_decode_passes(reference):
+    """Perfect decode passes."""
     reader, frames = reference
     report = compare_to_reference(FakeDecoded(frames), reader, _manifest(frames))
     assert report.ok, report.failures
@@ -58,6 +61,7 @@ def test_perfect_decode_passes(reference):
 
 
 def test_shifted_camera_named_in_failure(reference):
+    """Shifted camera named in failure."""
     reader, frames = reference
     decoded = copy.deepcopy(frames)
     decoded[1].views[2].C = decoded[1].views[2].C + np.float32(0.05)
@@ -67,6 +71,7 @@ def test_shifted_camera_named_in_failure(reference):
 
 
 def test_missing_frame_fails(reference):
+    """Missing frame fails."""
     reader, frames = reference
     report = compare_to_reference(FakeDecoded(frames[:2]), reader, _manifest(frames))
     assert not report.ok
@@ -74,12 +79,14 @@ def test_missing_frame_fails(reference):
 
 
 def test_wrong_frame_rate_fails(reference):
+    """Wrong frame rate fails."""
     reader, frames = reference
     report = compare_to_reference(FakeDecoded(frames, fps=25.0), reader, _manifest(frames))
     assert any("fps" in f for f in report.failures)
 
 
 def test_timing_mismatch_fails(reference):
+    """Timing mismatch fails."""
     reader, frames = reference
     manifest = _manifest(frames)
     manifest["frames"][2]["timestamp"] += 0.5
@@ -88,6 +95,7 @@ def test_timing_mismatch_fails(reference):
 
 
 def test_noisy_texture_fails_psnr_threshold(reference):
+    """Noisy texture fails psnr threshold."""
     reader, frames = reference
     decoded = copy.deepcopy(frames)
     rng = np.random.default_rng(0)
@@ -110,6 +118,7 @@ def test_texture_outside_the_valid_region_is_ignored(reference):
 
 
 def test_lost_view_occupancy_fails(reference):
+    """Lost view occupancy fails."""
     reader, frames = reference
     decoded = copy.deepcopy(frames)
     decoded[1].views[4].mask = np.zeros_like(decoded[1].views[4].mask)
@@ -118,6 +127,7 @@ def test_lost_view_occupancy_fails(reference):
 
 
 def test_depth_error_fails(reference):
+    """Depth error fails."""
     reader, frames = reference
     decoded = copy.deepcopy(frames)
     decoded[2].views[4].depth = decoded[2].views[4].depth * np.float32(1.2)

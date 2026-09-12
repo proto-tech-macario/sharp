@@ -9,13 +9,12 @@ import time
 
 import numpy as np
 import pytest
-from synthetic import make_stage1_result
-
 from sharp_video.contract import SpatialFrame
 from sharp_video.journal import Journal
 from sharp_video.runner import FrameFailuresError, process_frames
 from sharp_video.spatializer import FrameTimings
 from sharp_video.video_io import DecodedFrame
+from synthetic import make_stage1_result
 
 
 def _decoded_frames(n):
@@ -27,7 +26,10 @@ def _decoded_frames(n):
 
 
 class FakeSpatializer:
+    """Stage 1 stand-in with optional failures and random per-frame delays."""
+
     def __init__(self, fail_on=(), delay=0.0, seed=0):
+        """Configure the test double."""
         self.fail_on = set(fail_on)
         self.delay = delay
         self.calls = []
@@ -35,6 +37,7 @@ class FakeSpatializer:
         self._lock = threading.Lock()
 
     def __call__(self, decoded):
+        """Stand in for the replaced component for one call."""
         with self._lock:
             self.calls.append(decoded.index)
             delay = self._rng.uniform(0, self.delay)
@@ -49,6 +52,7 @@ class FakeSpatializer:
 
 
 def test_single_worker_yields_all_frames_in_order(tmp_path):
+    """Single worker yields all frames in order."""
     spatialize = FakeSpatializer()
     outcomes = list(process_frames(_decoded_frames(4), spatialize, tmp_path))
     assert [o.frame.source_frame_index for o in outcomes] == [0, 1, 2, 3]
@@ -59,6 +63,7 @@ def test_single_worker_yields_all_frames_in_order(tmp_path):
 
 
 def test_parallel_workers_restore_presentation_order(tmp_path):
+    """Parallel workers restore presentation order."""
     spatialize = FakeSpatializer(delay=0.02, seed=3)
     outcomes = list(process_frames(_decoded_frames(10), spatialize, tmp_path, worker_count=4))
     assert [o.frame.source_frame_index for o in outcomes] == list(range(10))
@@ -66,6 +71,7 @@ def test_parallel_workers_restore_presentation_order(tmp_path):
 
 
 def test_failed_frame_is_recorded_and_never_silently_dropped(tmp_path):
+    """Failed frame is recorded and never silently dropped."""
     spatialize = FakeSpatializer(fail_on={2})
     yielded = []
     with pytest.raises(FrameFailuresError) as info:
@@ -83,6 +89,7 @@ def test_failed_frame_is_recorded_and_never_silently_dropped(tmp_path):
 
 
 def test_resume_recomputes_only_missing_frames(tmp_path):
+    """Resume recomputes only missing frames."""
     with pytest.raises(FrameFailuresError):
         list(process_frames(_decoded_frames(5), FakeSpatializer(fail_on={2}), tmp_path))
 
@@ -99,6 +106,7 @@ def test_resume_recomputes_only_missing_frames(tmp_path):
 
 
 def test_corrupt_cache_file_is_recomputed(tmp_path):
+    """Corrupt cache file is recomputed."""
     list(process_frames(_decoded_frames(3), FakeSpatializer(), tmp_path))
     (tmp_path / "frames" / "000001.h5").write_bytes(b"not hdf5")
     retry = FakeSpatializer()
@@ -107,6 +115,7 @@ def test_corrupt_cache_file_is_recomputed(tmp_path):
 
 
 def test_without_resume_everything_is_recomputed(tmp_path):
+    """Without resume everything is recomputed."""
     list(process_frames(_decoded_frames(3), FakeSpatializer(), tmp_path))
     again = FakeSpatializer()
     list(process_frames(_decoded_frames(3), again, tmp_path))
@@ -114,6 +123,7 @@ def test_without_resume_everything_is_recomputed(tmp_path):
 
 
 def test_frames_are_pulled_lazily_within_a_bounded_window(tmp_path):
+    """Frames are pulled lazily within a bounded window."""
     pulled = []
 
     def source():

@@ -1,3 +1,36 @@
+diff --git a/scripts/encode.py b/scripts/encode.py
+index 23cd6e6..dd51de9 100755
+--- a/scripts/encode.py
++++ b/scripts/encode.py
+@@ -635,9 +635,19 @@ class MivEncoder:
+ 
+ 
+ class MivVvencEncoder(MivEncoder):
++    @staticmethod
++    def rational_frame_rate(frame_rate: float) -> tuple[int, int]:
++        # Rational frame rates (SHARP Stage 2): VVenC's FrameRate is an integer numerator with
++        # a separate FrameScale denominator, e.g. 30000/1001; same rule as the TMIV encoder VUI.
++        for scale in (1, 1001):
++            scaled = frame_rate * scale
++            if abs(scaled - round(scaled)) <= 1e-6 * scaled:
++                return round(scaled), scale
++        raise RuntimeError(f"Frame rate {frame_rate} is neither integer nor N/1001")
++
+     def video_encoder_arguments(self, rate_id: str, vsb_info: dict) -> list:
+         frame_size = vsb_info["frame_size"]
+-        frame_rate = self.frame_rate()
++        frame_rate, frame_scale = self.rational_frame_rate(self.frame_rate())
+         bit_depth = vsb_info["bit_depth"]
+ 
+         args = (
+@@ -649,6 +659,7 @@ class MivVvencEncoder(MivEncoder):
+             + ["-q", self.quantization_parameters(vsb_info, rate_id)]
+             + ["-f", self.frame_count]
+             + ["-fr", frame_rate]
++            + ["--FrameScale", frame_scale]
+             + ["-s", f"{frame_size[0]}x{frame_size[1]}"]
+             + ["--SEIDecodedPictureHash", 1]
+             + ["--POC0IDR", 1]
 diff --git a/source/Encoder/app/Encoder_main.cpp b/source/Encoder/app/Encoder_main.cpp
 index 02b7528..93a0eb7 100644
 --- a/source/Encoder/app/Encoder_main.cpp
@@ -19,10 +52,18 @@ index 02b7528..93a0eb7 100644
                           IO::loadMultiviewFrame(json(), m_placeholders, m_sequenceConfig, i)});
      }
 diff --git a/source/Encoder/src/Encoder.cpp b/source/Encoder/src/Encoder.cpp
-index 92eb9fe..b93c616 100644
+index 92eb9fe..f9e841f 100644
 --- a/source/Encoder/src/Encoder.cpp
 +++ b/source/Encoder/src/Encoder.cpp
-@@ -73,6 +73,8 @@ public:
+@@ -46,6 +46,7 @@
+ #include "SampleStats.h"
+ 
+ #include <algorithm>
++#include <cmath>
+ #include <memory>
+ #include <numeric>
+ 
+@@ -73,6 +74,8 @@ public:
    void process(std::vector<SourceUnit> buffer, const Common::StageSource<CodableUnit> &source_) {
      if (m_firstIdx == 0) {
        prepareSequence(buffer.front());
@@ -31,7 +72,30 @@ index 92eb9fe..b93c616 100644
      }
  
      m_params.foc = m_firstIdx % m_config.intraPeriod;
-@@ -569,6 +571,25 @@ private:
+@@ -350,9 +353,20 @@ private:
+   }
+ 
+   [[nodiscard]] static auto vuiParameters(const MivBitstream::SequenceConfig &sequenceConfig) {
++    // Rational frame rates (SHARP Stage 2): NTSC-family rates such as 30000/1001 are coded
++    // exactly with num_units_in_tick = 1001; integer rates keep num_units_in_tick = 1.
+     auto numUnitsInTick = 1;
+-    auto timeScale = static_cast<int32_t>(numUnitsInTick * sequenceConfig.frameRate);
+-    LIMITATION(timeScale == numUnitsInTick * sequenceConfig.frameRate);
++    for (const auto candidate : {1, 1001}) {
++      const auto scaled = candidate * sequenceConfig.frameRate;
++      if (std::abs(scaled - std::round(scaled)) <= 1e-6 * scaled) {
++        numUnitsInTick = candidate;
++        break;
++      }
++    }
++    const auto timeScale =
++        static_cast<int32_t>(std::lround(numUnitsInTick * sequenceConfig.frameRate));
++    LIMITATION(std::abs(timeScale - numUnitsInTick * sequenceConfig.frameRate) <=
++               1e-6 * timeScale);
+ 
+     auto vui = MivBitstream::VuiParameters{};
+     vui.vui_num_units_in_tick(numUnitsInTick)
+@@ -569,6 +583,25 @@ private:
      }
    }
  

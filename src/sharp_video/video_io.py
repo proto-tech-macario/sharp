@@ -57,6 +57,7 @@ class VideoInfo:
     color_range: str
 
     def as_dict(self) -> dict:
+        """All fields as a plain dict."""
         return dict(self.__dict__)
 
 

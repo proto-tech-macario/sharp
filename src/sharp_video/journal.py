@@ -17,6 +17,7 @@ class Journal:
     """Records which frames finished and which failed (with the error)."""
 
     def __init__(self, path: str | Path):
+        """Open the journal at `path`, loading it if it already exists."""
         self.path = Path(path)
         self._lock = threading.Lock()
         if self.path.exists():
@@ -40,6 +41,7 @@ class Journal:
             self._save()
 
     def mark_failed(self, index: int, pts: int, timestamp: float, error: str) -> None:
+        """Record frame `index` as failed, with its error text."""
         with self._lock:
             self._data["frames"][str(index)] = {
                 "status": "failed", "pts": pts, "timestamp": timestamp, "error": error,
@@ -47,16 +49,19 @@ class Journal:
             self._save()
 
     def is_done(self, index: int) -> bool:
+        """Whether frame `index` has completed."""
         with self._lock:
             entry = self._data["frames"].get(str(index))
             return entry is not None and entry["status"] == "done"
 
     @property
     def last_completed(self) -> int | None:
+        """Last frame completed with every earlier frame done: the resume point."""
         return self._data["last_completed"]
 
     @property
     def failures(self) -> list[dict[str, Any]]:
+        """Every failed frame with its PTS, timestamp and error, in index order."""
         with self._lock:
             return [
                 {"index": int(key), "pts": entry["pts"], "timestamp": entry["timestamp"],

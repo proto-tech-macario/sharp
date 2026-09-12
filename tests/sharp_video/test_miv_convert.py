@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from synthetic import make_frames
-
 from sharp_video.miv.camera import from_tmiv_pose, tmiv_view_json, to_tmiv_pose
 from sharp_video.miv.depth import depth_to_geometry, geometry_to_depth
 from sharp_video.miv.yuv import rgb_to_yuv420, yuv420_to_rgb
+from synthetic import make_frames
 
 
 def _rz(a):
@@ -46,6 +45,7 @@ P = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])  # OpenCV ->
 
 @pytest.mark.parametrize("drift", [0.0, 0.7])
 def test_pose_round_trip_on_stage1_rig(drift):
+    """Pose round trip on stage1 rig."""
     frame = make_frames(2, drift=drift)[1]
     for view in frame.views:
         position, rotation = to_tmiv_pose(view.R, view.C)
@@ -55,12 +55,14 @@ def test_pose_round_trip_on_stage1_rig(drift):
 
 
 def test_reference_view_maps_to_identity():
+    """Reference view maps to identity."""
     position, rotation = to_tmiv_pose(np.eye(3, dtype=np.float32), np.zeros(3, np.float32))
     np.testing.assert_allclose(position, 0.0, atol=1e-7)
     np.testing.assert_allclose(rotation, 0.0, atol=1e-7)
 
 
 def test_tmiv_projection_equals_opencv_projection():
+    """Tmiv projection equals opencv projection."""
     frame = make_frames(2, drift=0.4)[1]
     rng = np.random.default_rng(0)
     points_cv = rng.uniform([-1, -1, 3], [1, 1, 8], size=(20, 3))
@@ -74,6 +76,7 @@ def test_tmiv_projection_equals_opencv_projection():
 
 
 def test_view_json_fields():
+    """View json fields."""
     view = make_frames(1)[0].views[0]
     cam = tmiv_view_json("v0", view.K, view.R, view.C, 32, 32, (0.5, 50.0))
     assert cam["Name"] == "v0"
@@ -88,6 +91,7 @@ def test_view_json_fields():
 
 
 def test_depth_round_trip_and_invalid():
+    """Depth round trip and invalid."""
     depth = np.array([[0.0, 0.5, 2.0], [7.3, 40.0, 0.0]], dtype=np.float32)
     mask = (depth > 0).astype(np.uint8)
     samples, clamped = depth_to_geometry(depth, mask, near=0.1, far=1000.0)
@@ -104,6 +108,7 @@ def test_depth_round_trip_and_invalid():
 
 
 def test_depth_out_of_range_is_clamped_and_counted():
+    """Depth out of range is clamped and counted."""
     depth = np.array([[0.01, 5000.0, 3.0]], dtype=np.float32)
     samples, clamped = depth_to_geometry(depth, np.ones_like(depth, np.uint8), 0.1, 1000.0)
     assert clamped == 2
@@ -117,6 +122,7 @@ def test_depth_out_of_range_is_clamped_and_counted():
 
 
 def test_decoding_a_single_depth_range():
+    """Decoding a single depth range."""
     # TMIV's dynamic depth range yields near == far for a view whose content sits at one depth.
     samples = np.array([[0, 1, 700, 1023]], dtype=np.uint16)
     depth, mask = geometry_to_depth(samples, 5.0, 5.0, bit_depth=10)
@@ -125,11 +131,13 @@ def test_decoding_a_single_depth_range():
 
 
 def test_depth_range_must_be_ordered():
+    """Depth range must be ordered."""
     with pytest.raises(ValueError):
         depth_to_geometry(np.ones((2, 2), np.float32), np.ones((2, 2), np.uint8), 5.0, 1.0)
 
 
 def test_yuv_round_trip_is_exact_on_constant_2x2_blocks():
+    """Yuv round trip is exact on constant 2x2 blocks."""
     rng = np.random.default_rng(1)
     blocks = rng.integers(0, 256, size=(16, 24, 3), dtype=np.uint8)
     rgb = np.repeat(np.repeat(blocks, 2, axis=0), 2, axis=1)  # no chroma detail lost
@@ -138,6 +146,7 @@ def test_yuv_round_trip_is_exact_on_constant_2x2_blocks():
 
 
 def test_yuv_round_trip_on_gradient_image():
+    """Yuv round trip on gradient image."""
     y, x = np.mgrid[0:32, 0:48]
     rgb = np.stack([x * 5, y * 7, 255 - x * 5], axis=-1).clip(0, 255).astype(np.uint8)
     Y, U, V = rgb_to_yuv420(rgb, bit_depth=10)
@@ -149,6 +158,7 @@ def test_yuv_round_trip_on_gradient_image():
 
 
 def test_yuv_primaries_are_bt709():
+    """Yuv primaries are bt709."""
     white = np.full((2, 2, 3), 255, np.uint8)
     red = np.zeros((2, 2, 3), np.uint8)
     red[..., 0] = 255
@@ -159,5 +169,6 @@ def test_yuv_primaries_are_bt709():
 
 
 def test_yuv_odd_size_rejected():
+    """Yuv odd size rejected."""
     with pytest.raises(ValueError, match="even"):
         rgb_to_yuv420(np.zeros((3, 4, 3), np.uint8))

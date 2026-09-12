@@ -6,8 +6,6 @@ import json
 
 import numpy as np
 import pytest
-from synthetic import make_frames, make_info
-
 from sharp_video.miv.camera import to_tmiv_pose
 from sharp_video.miv.depth import geometry_to_depth
 from sharp_video.miv.encoder import MIVEncoder, MIVEncoderConfig, encode_sequence
@@ -21,6 +19,7 @@ from sharp_video.miv.tmiv_config import (
 )
 from sharp_video.miv.yuv import frame_nbytes, read_yuv420_frame, yuv420_to_rgb
 from sharp_video.sequence_io import SequenceReader, SequenceWriter
+from synthetic import make_frames, make_info
 
 W = H = 32
 
@@ -29,10 +28,12 @@ class FakeRunner:
     """Records the TMIV command and produces the bitstream encode.py would."""
 
     def __init__(self, payload=b"\x00MIV" * 250):
+        """Configure the test double."""
         self.commands = []
         self.payload = payload
 
     def __call__(self, cmd, log_path, cwd=None, env=None):
+        """Stand in for the replaced component for one call."""
         self.commands.append([str(c) for c in cmd])
         output_dir = cmd[cmd.index("-o") + 1]
         target = output_dir / bitstream_output_path()
@@ -56,6 +57,7 @@ def _encode(tmp_path, frames, runner=None, fps=30.0, **kwargs):
 
 
 def test_finalize_runs_tmiv_and_writes_output(tmp_path):
+    """Finalize runs tmiv and writes output."""
     frames = make_frames(4, drift=0.3)
     result, runner = _encode(tmp_path, frames)
 
@@ -77,6 +79,7 @@ def test_finalize_runs_tmiv_and_writes_output(tmp_path):
 
 
 def test_view_files_hold_every_frame(tmp_path):
+    """View files hold every frame."""
     frames = make_frames(3)
     _encode(tmp_path, frames)
     input_dir = tmp_path / "work" / "input"
@@ -88,6 +91,7 @@ def test_view_files_hold_every_frame(tmp_path):
 
 
 def test_texture_and_depth_written_faithfully(tmp_path):
+    """Texture and depth written faithfully."""
     frames = make_frames(2)
     _encode(tmp_path, frames, depth_near=0.1, depth_far=1000.0)
     input_dir = tmp_path / "work" / "input"
@@ -105,6 +109,7 @@ def test_texture_and_depth_written_faithfully(tmp_path):
 
 
 def test_per_frame_camera_files_follow_moving_cameras(tmp_path):
+    """Per frame camera files follow moving cameras."""
     frames = make_frames(3, drift=0.5)
     _encode(tmp_path, frames)
     for t, frame in enumerate(frames):
@@ -121,6 +126,7 @@ def test_per_frame_camera_files_follow_moving_cameras(tmp_path):
 
 
 def test_manifest_records_timing_and_conventions(tmp_path):
+    """Manifest records timing and conventions."""
     frames = make_frames(3)
     result, _ = _encode(tmp_path, frames)
     manifest = json.loads(result.manifest_path.read_text())
@@ -135,6 +141,7 @@ def test_manifest_records_timing_and_conventions(tmp_path):
 
 
 def test_variable_frame_rate_is_flagged(tmp_path):
+    """Variable frame rate is flagged."""
     frames = make_frames(4)
     for frame, t in zip(frames, (0.0, 0.0333, 0.1, 0.1333)):
         frame.timestamp = t
@@ -143,6 +150,7 @@ def test_variable_frame_rate_is_flagged(tmp_path):
 
 
 def test_out_of_range_depth_is_counted(tmp_path):
+    """Out of range depth is counted."""
     frames = make_frames(1)
     result, _ = _encode(tmp_path, frames, depth_near=0.1, depth_far=4.0)  # plane is at ~5 m
     assert result.clamped_depth_pixels > 0
@@ -150,6 +158,7 @@ def test_out_of_range_depth_is_counted(tmp_path):
 
 @pytest.mark.parametrize("problem", ["eight_views", "k_change", "timestamp", "size"])
 def test_bad_input_rejected(tmp_path, problem):
+    """Bad input rejected."""
     encoder = MIVEncoder(_config(tmp_path), runner=FakeRunner())
     encoder.begin(fps=30.0, width=W, height=H)
     frames = make_frames(2)
@@ -169,6 +178,7 @@ def test_bad_input_rejected(tmp_path, problem):
 
 
 def test_encode_before_begin_and_odd_size(tmp_path):
+    """Encode before begin and odd size."""
     encoder = MIVEncoder(_config(tmp_path), runner=FakeRunner())
     with pytest.raises(RuntimeError):
         encoder.encode_frame(0.0, make_frames(1)[0].views)
@@ -177,6 +187,7 @@ def test_encode_before_begin_and_odd_size(tmp_path):
 
 
 def test_encode_sequence_from_hdf5_matches_streaming(tmp_path):
+    """Encode sequence from hdf5 matches streaming."""
     frames = make_frames(3, drift=0.2)
     path = tmp_path / "seq.h5"
     with SequenceWriter(path, make_info()) as writer:
@@ -206,14 +217,29 @@ def _tmiv_or_skip():
         pytest.skip(str(exc))
 
 
+def test_tmiv_runs_inside_the_work_dir(tmp_path):
+    """VVenC writes its reconstruction relative to the current directory."""
+    seen = {}
+    inner = FakeRunner()
+
+    def runner(cmd, log_path, cwd=None, env=None):
+        seen["cwd"] = cwd
+        inner(cmd, log_path)
+
+    _encode(tmp_path, make_frames(1), runner=runner)
+    assert seen["cwd"] == tmp_path / "work"
+
+
 @pytest.mark.parametrize("intra_period", [0, 1, 4, 8, 12, 64])
 def test_intra_period_limited_to_vvenc_gop_sizes(tmp_path, intra_period):
+    """Intra period limited to vvenc gop sizes."""
     with pytest.raises(ValueError, match="intra_period"):
         _config(tmp_path, intra_period=intra_period)
 
 
 @pytest.mark.slow
 def test_real_tmiv_encodes_moving_camera_sequence(tmp_path):
+    """Real tmiv encodes moving camera sequence."""
     tmiv = _tmiv_or_skip()
     frames = make_frames(4, width=64, height=64, drift=0.3, motion=0.2)
     encoder = MIVEncoder(MIVEncoderConfig(work_dir=tmp_path / "work", tmiv=tmiv, intra_period=16,

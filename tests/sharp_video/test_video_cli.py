@@ -6,14 +6,14 @@ import json
 
 import pytest
 from click.testing import CliRunner
-from synthetic import make_frames, make_info
-
 from sharp_video import cli
 from sharp_video.sequence_io import SequenceWriter
+from synthetic import make_frames, make_info
 
 
 @pytest.fixture
 def sequence(tmp_path):
+    """A 3-frame synthetic temporal HDF5 sequence."""
     path = tmp_path / "seq.h5"
     with SequenceWriter(path, make_info()) as writer:
         for frame in make_frames(3, drift=0.2):
@@ -24,11 +24,13 @@ def sequence(tmp_path):
 @pytest.mark.parametrize("command", [cli.video_to_miv_cli, cli.validate_sequence_cli,
                                      cli.inspect_cli, cli.miv_encode_cli, cli.miv_validate_cli])
 def test_help(command):
+    """Help."""
     result = CliRunner().invoke(command, ["--help"])
     assert result.exit_code == 0, result.output
 
 
 def test_video_to_miv_parses_options(tmp_path, monkeypatch):
+    """Video to miv parses options."""
     captured = {}
 
     def fake_run(options, **kwargs):
@@ -58,6 +60,7 @@ def test_video_to_miv_parses_options(tmp_path, monkeypatch):
 
 
 def test_bad_output_resolution_rejected(tmp_path):
+    """Bad output resolution rejected."""
     video = tmp_path / "in.mp4"
     video.write_bytes(b"")
     result = CliRunner().invoke(cli.video_to_miv_cli, [
@@ -69,6 +72,7 @@ def test_bad_output_resolution_rejected(tmp_path):
 
 
 def test_validate_sequence_cli(sequence, tmp_path):
+    """Validate sequence cli."""
     out = tmp_path / "temporal.json"
     result = CliRunner().invoke(cli.validate_sequence_cli,
                                 [str(sequence), "--temporal-json", str(out)])
@@ -78,6 +82,7 @@ def test_validate_sequence_cli(sequence, tmp_path):
 
 
 def test_inspect_cli(sequence, tmp_path):
+    """Inspect cli."""
     result = CliRunner().invoke(cli.inspect_cli, [str(sequence), "--frame", "0", "--frame", "2",
                                                   "--out", str(tmp_path / "ins")])
     assert result.exit_code == 0, result.output

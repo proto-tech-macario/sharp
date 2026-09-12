@@ -8,12 +8,11 @@ import h5py
 import numpy as np
 import pytest
 from PIL import Image
-from synthetic import make_frames, make_info
-
 from sharp_video.inspect import timestamp_table, write_inspection
 from sharp_video.metrics import temporal_metrics
 from sharp_video.sequence_io import SequenceReader, SequenceWriter
 from sharp_video.validation import validate_sequence
+from synthetic import make_frames, make_info
 
 
 def _write(path, frames):
@@ -24,12 +23,14 @@ def _write(path, frames):
 
 
 def test_consistent_sequence_passes(tmp_path):
+    """Consistent sequence passes."""
     report = validate_sequence(_write(tmp_path / "s.h5", make_frames(3, drift=0.2)))
     assert report.ok, report.failures
     assert report.frame_count == 3 and report.fps == 30.0 and report.cfr
 
 
 def test_broken_rotation_reported_with_frame_index(tmp_path):
+    """Broken rotation reported with frame index."""
     frames = make_frames(3)
     frames[1].views[5].R = frames[1].views[5].R * np.float32(1.5)
     report = validate_sequence(_write(tmp_path / "s.h5", frames))
@@ -38,6 +39,7 @@ def test_broken_rotation_reported_with_frame_index(tmp_path):
 
 
 def test_duplicate_timestamp_and_bad_frame_count_detected(tmp_path):
+    """Duplicate timestamp and bad frame count detected."""
     path = _write(tmp_path / "s.h5", make_frames(3))
     with h5py.File(path, "r+") as f:
         f["frames/000002"].attrs["timestamp"] = f["frames/000001"].attrs["timestamp"]
@@ -48,6 +50,7 @@ def test_duplicate_timestamp_and_bad_frame_count_detected(tmp_path):
 
 
 def test_intrinsics_change_detected(tmp_path):
+    """Intrinsics change detected."""
     frames = make_frames(2)
     for view in frames[1].views:
         view.K = view.K.copy()
@@ -57,6 +60,7 @@ def test_intrinsics_change_detected(tmp_path):
 
 
 def test_static_sequence_has_no_temporal_change(tmp_path):
+    """Static sequence has no temporal change."""
     reader = SequenceReader(_write(tmp_path / "s.h5", make_frames(3)))
     metrics = temporal_metrics(reader)
     assert len(metrics.per_pair) == 2
@@ -67,6 +71,7 @@ def test_static_sequence_has_no_temporal_change(tmp_path):
 
 
 def test_moving_content_and_cameras_are_measured(tmp_path):
+    """Moving content and cameras are measured."""
     reader = SequenceReader(_write(tmp_path / "s.h5", make_frames(3, drift=0.4, motion=0.3)))
     summary = temporal_metrics(reader).summary
     assert summary["rgb_flicker"]["mean"] > 0
@@ -76,6 +81,7 @@ def test_moving_content_and_cameras_are_measured(tmp_path):
 
 
 def test_inspection_writes_sheets_and_cameras(tmp_path):
+    """Inspection writes sheets and cameras."""
     reader = SequenceReader(_write(tmp_path / "s.h5", make_frames(2, drift=0.2)))
     paths = write_inspection(reader, 1, tmp_path / "inspect")
     names = {p.name for p in paths}
@@ -88,6 +94,7 @@ def test_inspection_writes_sheets_and_cameras(tmp_path):
 
 
 def test_timestamp_table(tmp_path):
+    """Timestamp table."""
     reader = SequenceReader(_write(tmp_path / "s.h5", make_frames(3)))
     table = timestamp_table(reader)
     assert [row["frame"] for row in table] == [0, 1, 2]

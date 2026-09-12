@@ -23,6 +23,7 @@ sys.meta_path.insert(0, Blocker())
     ["sharp_video.contract", "sharp_video.sequence_io", "sharp_video.miv"],
 )
 def test_module_imports_without_sharp_or_torch(module):
+    """Module imports without sharp or torch."""
     code = BLOCKER + f"import {module}\nprint('ok')\n"
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr

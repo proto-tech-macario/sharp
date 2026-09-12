@@ -7,10 +7,9 @@ import json
 import numpy as np
 import pytest
 from PIL import Image
-from synthetic import make_stage1_result
-
 from sharp_video.spatializer import CameraConfig, Stage1Spatializer, load_camera_config
 from sharp_video.video_io import DecodedFrame
+from synthetic import make_stage1_result
 
 
 def _decoded(index=3, width=32, height=32):
@@ -23,10 +22,12 @@ class FakeGenerate:
     """Stands in for sharp_spatialize.api.generate_spatial_photo."""
 
     def __init__(self):
+        """Configure the test double."""
         self.calls = []
         self.png_pixels = None
 
     def __call__(self, image_path, **kwargs):
+        """Stand in for the replaced component for one call."""
         self.calls.append((image_path, kwargs))
         self.png_pixels = np.asarray(Image.open(image_path).convert("RGB"))
         report = kwargs["on_progress"]
@@ -37,6 +38,7 @@ class FakeGenerate:
 
 
 def test_frame_goes_through_stage1_with_forwarded_options(tmp_path):
+    """Frame goes through stage1 with forwarded options."""
     fake = FakeGenerate()
     spatializer = Stage1Spatializer(
         work_dir=tmp_path, camera=CameraConfig(angle_deg=12.5), output_size=(32, 32),
@@ -62,6 +64,7 @@ def test_frame_goes_through_stage1_with_forwarded_options(tmp_path):
 
 
 def test_default_output_size_is_source(tmp_path):
+    """Default output size is source."""
     fake = FakeGenerate()
     Stage1Spatializer(work_dir=tmp_path, generate=fake)(_decoded())
     kwargs = fake.calls[0][1]
@@ -70,6 +73,7 @@ def test_default_output_size_is_source(tmp_path):
 
 
 def test_png_removed_even_when_stage1_fails(tmp_path):
+    """Png removed even when stage1 fails."""
     def failing(image_path, **kwargs):
         raise RuntimeError("boom")
 
@@ -79,6 +83,7 @@ def test_png_removed_even_when_stage1_fails(tmp_path):
 
 
 def test_load_camera_config(tmp_path):
+    """Load camera config."""
     path = tmp_path / "camera.json"
     path.write_text(json.dumps({"angle_deg": 15}))
     assert load_camera_config(path) == CameraConfig(angle_deg=15.0)

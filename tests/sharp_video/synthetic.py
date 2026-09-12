@@ -12,7 +12,6 @@ import numpy as np
 import torch
 from sharp_spatialize.cameras import build_camera_rig
 from sharp_spatialize.hdf5_io import SpatialPhotoResult
-
 from sharp_video.contract import SequenceInfo, SpatialFrame
 
 PLANE_HALF_EXTENT = 1.8
@@ -106,9 +105,12 @@ def make_frames(
     motion: float = 0.0,
     tilt: float = 0.0,
 ) -> list[SpatialFrame]:
-    """`num_frames` consecutive frames; `drift` moves the plane (and so the rig)
-    by that many metres per frame, `motion` slides the texture per frame, and
-    `tilt` slopes the plane (see `make_stage1_result`)."""
+    """`num_frames` consecutive synthetic frames of a plane.
+
+    `drift` moves the plane (and so the rig) by that many metres per frame,
+    `motion` slides the texture per frame, and `tilt` slopes the plane (see
+    `make_stage1_result`).
+    """
     return [
         SpatialFrame.from_stage1(
             make_stage1_result(width, height, 5.0 + drift * t, motion * t, tilt),

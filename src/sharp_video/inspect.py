@@ -39,6 +39,7 @@ def depth_sheet(frame: SpatialFrame) -> np.ndarray:
 
 
 def camera_table(frame: SpatialFrame) -> dict:
+    """K, R and C of every view of `frame`, as a JSON-ready dict."""
     return {
         "timestamp": frame.timestamp,
         "pts": frame.pts,

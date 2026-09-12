@@ -32,7 +32,7 @@ import numpy as np
 from ..contract import NUM_VIEWS, SpatialView
 from .camera import tmiv_view_json
 from .depth import depth_to_geometry
-from .tmiv import TMIV_VERSION, PATCH_NAME, TmivInstall, find_tmiv, run_logged
+from .tmiv import PATCH_NAME, TMIV_VERSION, TmivInstall, find_tmiv, run_logged
 from .tmiv_config import (
     CONTENT_ID,
     GEOMETRY_BIT_DEPTH,
@@ -111,6 +111,7 @@ class MIVEncoder:
     """Accepts spatial frames one at a time and produces one MIV file."""
 
     def __init__(self, config: MIVEncoderConfig, runner: Runner = run_logged):
+        """Create an encoder; `runner` runs the TMIV tools (replaceable in tests)."""
         self.config = config
         self._runner = runner
         self._started = False
@@ -122,10 +123,12 @@ class MIVEncoder:
 
     @property
     def input_dir(self) -> Path:
+        """TMIV input directory: per-view YUV files and per-frame camera files."""
         return self.config.work_dir / "input"
 
     @property
     def output_dir(self) -> Path:
+        """TMIV output directory: atlases, sub-bitstreams and the MIV bitstream."""
         return self.config.work_dir / "output"
 
     def begin(self, fps: float, width: int, height: int, num_views: int = NUM_VIEWS) -> None:
@@ -249,7 +252,10 @@ class MIVEncoder:
             "-j", str(self.config.threads),
         ]
         tmiv_start = time.perf_counter()
-        self._runner(cmd, self.config.work_dir / "logs" / "encode.log")
+        # Run inside the work dir: TMIV's VVenC config writes its reconstruction
+        # ("ReconFile: rec.yuv") relative to the current directory.
+        self._runner(cmd, self.config.work_dir / "logs" / "encode.log",
+                     cwd=self.config.work_dir)
         tmiv_time = time.perf_counter() - tmiv_start
 
         bitstream = self.output_dir / bitstream_output_path()

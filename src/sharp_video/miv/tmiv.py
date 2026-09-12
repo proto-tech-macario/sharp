@@ -38,6 +38,7 @@ class TmivError(RuntimeError):
     """A TMIV tool exited with an error; its output is in `log_path`."""
 
     def __init__(self, message: str, log_path: Path):
+        """An error whose tool output is in `log_path`."""
         super().__init__(message)
         self.log_path = log_path
 
@@ -50,18 +51,22 @@ class TmivInstall:
 
     @property
     def source_dir(self) -> Path:
+        """The patched TMIV source checkout."""
         return self.root / "src"
 
     @property
     def install_dir(self) -> Path:
+        """The TMIV install prefix."""
         return self.root / "install"
 
     @property
     def bin_dir(self) -> Path:
+        """TMIV and video codec executables."""
         return self.install_dir / "bin"
 
     @property
     def encode_script(self) -> Path:
+        """TMIV's encode.py (TmivEncoder -> video encoder -> TmivMultiplexer)."""
         return self.source_dir / "scripts" / "encode.py"
 
     @property
@@ -71,14 +76,17 @@ class TmivInstall:
 
     @property
     def marker(self) -> dict:
+        """Contents of sharp_tmiv.json, or {} if it is missing."""
         path = self.root / "sharp_tmiv.json"
         return json.loads(path.read_text()) if path.exists() else {}
 
     @property
     def patched(self) -> bool:
+        """Whether this build carries the per-frame camera patch."""
         return self.marker.get("patch") == PATCH_NAME
 
     def exe(self, name: str) -> Path:
+        """Path of executable `name`; raises TmivNotFoundError if it is missing."""
         path = self.bin_dir / name
         if not path.exists():
             raise TmivNotFoundError(f"TMIV executable {name} not found in {self.bin_dir}")

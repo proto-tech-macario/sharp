@@ -33,14 +33,17 @@ PACKING_MARGIN = 1.25
 
 
 def texture_input_path(view_name: str, width: int, height: int) -> str:
+    """Path of a view's texture file, relative to TMIV's input directory."""
     return f"{CONTENT_ID}/{view_name}_texture_{width}x{height}_{TEXTURE_FORMAT}.yuv"
 
 
 def geometry_input_path(view_name: str, width: int, height: int) -> str:
+    """Path of a view's depth (geometry) file, relative to TMIV's input directory."""
     return f"{CONTENT_ID}/{view_name}_depth_{width}x{height}_{GEOMETRY_FORMAT}.yuv"
 
 
 def sequence_config_path(frame_index: int) -> str:
+    """Path of frame `frame_index`'s camera file, relative to TMIV's input directory."""
     return f"{CONTENT_ID}/seq/{frame_index:06d}.json"
 
 

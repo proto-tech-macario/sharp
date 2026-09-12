@@ -27,6 +27,8 @@ CENTER_VIEW = 4
 
 @dataclass
 class TemporalMetrics:
+    """Frame-to-frame measurements: one row per frame pair plus summary statistics."""
+
     per_pair: list[dict] = field(default_factory=list)  # one row per frame pair
     summary: dict[str, dict[str, float]] = field(default_factory=dict)
 

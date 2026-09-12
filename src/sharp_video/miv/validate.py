@@ -31,17 +31,24 @@ _LUMA = np.array([0.2126, 0.7152, 0.0722])  # BT.709, as used for the texture vi
 
 @dataclass(frozen=True)
 class Thresholds:
+    """Tolerances used by `compare_to_reference`."""
+
     k_rel: float = 1e-3
     r_abs: float = 1e-3
     c_abs: float = 1e-3  # metres
     mask_agreement: float = 0.95  # fraction of pixels where decoded and source validity agree
     depth_median_rel: float = 0.05
-    y_psnr_db: float = 30.0  # luma, on pixels valid in both
+    # Luma PSNR on pixels valid in both. This is a correspondence gate (a misaligned or
+    # missing texture scores ~6-15 dB), not a codec quality target: VVC random access
+    # codes higher temporal layers at higher QP. Codec quality is reported in the stats.
+    y_psnr_db: float = 25.0
     timestamp_abs: float = 1e-6  # seconds
 
 
 @dataclass
 class MivReport:
+    """Outcome of MIV validation: every failure found, plus statistics."""
+
     ok: bool
     failures: list[str] = field(default_factory=list)
     stats: dict = field(default_factory=dict)

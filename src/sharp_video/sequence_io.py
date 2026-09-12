@@ -38,6 +38,7 @@ class SequenceWriter:
     """Streams `SpatialFrame`s into a temporal HDF5 file."""
 
     def __init__(self, path: str | Path, info: SequenceInfo, compression: str | None = "gzip"):
+        """Start writing to `<path>.tmp`; the file appears at `path` on close()."""
         self.path = Path(path)
         self.info = info
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,6 +52,7 @@ class SequenceWriter:
 
     @property
     def frame_count(self) -> int:
+        """Number of frames written so far."""
         return self._count
 
     def write_frame(self, frame: SpatialFrame) -> None:
@@ -134,6 +136,7 @@ class SequenceReader:
     """Lazy reader for a temporal HDF5 spatial sequence."""
 
     def __init__(self, path: str | Path):
+        """Open `path` and read its metadata and frame list."""
         self.path = Path(path)
         with h5py.File(self.path, "r") as f:
             attrs = dict(f["metadata"].attrs)

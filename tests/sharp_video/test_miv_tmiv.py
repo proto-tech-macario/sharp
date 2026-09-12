@@ -6,7 +6,6 @@ import json
 import sys
 
 import pytest
-
 from sharp_video.miv.tmiv import (
     ENV_VAR,
     PATCH_NAME,
@@ -29,6 +28,7 @@ def _fake_tmiv(root, patched=True):
 
 
 def test_explicit_path_wins(tmp_path, monkeypatch):
+    """Explicit path wins."""
     explicit = _fake_tmiv(tmp_path / "a")
     monkeypatch.setenv(ENV_VAR, str(_fake_tmiv(tmp_path / "b")))
     tmiv = find_tmiv(explicit)
@@ -38,6 +38,7 @@ def test_explicit_path_wins(tmp_path, monkeypatch):
 
 
 def test_environment_variable_then_default(tmp_path, monkeypatch):
+    """Environment variable then default."""
     env_root = _fake_tmiv(tmp_path / "env")
     monkeypatch.setenv(ENV_VAR, str(env_root))
     assert find_tmiv().root == env_root
@@ -49,6 +50,7 @@ def test_environment_variable_then_default(tmp_path, monkeypatch):
 
 
 def test_missing_install_explains_how_to_build(tmp_path, monkeypatch):
+    """Missing install explains how to build."""
     monkeypatch.delenv(ENV_VAR, raising=False)
     monkeypatch.chdir(tmp_path)
     with pytest.raises(TmivNotFoundError) as info:
@@ -57,18 +59,21 @@ def test_missing_install_explains_how_to_build(tmp_path, monkeypatch):
 
 
 def test_unpatched_install_rejected(tmp_path):
+    """Unpatched install rejected."""
     root = _fake_tmiv(tmp_path / "t", patched=False)
     with pytest.raises(TmivNotFoundError, match="patch"):
         find_tmiv(root)
 
 
 def test_missing_executable_named(tmp_path):
+    """Missing executable named."""
     tmiv = find_tmiv(_fake_tmiv(tmp_path / "t"))
     with pytest.raises(TmivNotFoundError, match="TmivRenderer"):
         tmiv.exe("TmivRenderer")
 
 
 def test_run_logged_writes_log(tmp_path):
+    """Run logged writes log."""
     log = tmp_path / "logs" / "ok.log"
     run_logged([sys.executable, "-c", "print('hello'); import sys; print('err', file=sys.stderr)"],
                log)
@@ -77,6 +82,7 @@ def test_run_logged_writes_log(tmp_path):
 
 
 def test_run_logged_failure_points_at_log(tmp_path):
+    """Run logged failure points at log."""
     log = tmp_path / "bad.log"
     with pytest.raises(TmivError) as info:
         run_logged([sys.executable, "-c", "print('nope'); raise SystemExit(3)"], log)
