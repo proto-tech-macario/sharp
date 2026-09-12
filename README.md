@@ -228,6 +228,53 @@ It exits non-zero and lists each failure if the file is not a valid spatial phot
 See the [Quick start](#quick-start-the-web-ui-and-spatial-photos) above: `./setup.sh`
 builds the environment and checks the CUDA toolchain these tools need.
 
+## Spatial video to MIV (fork addition, Stage 2)
+
+> Not part of upstream `apple/ml-sharp`. Added in this fork as the `sharp_video` package.
+
+`sharp_video` extends spatial photos to video. It decodes a clip, runs the unchanged
+spatial-photo pipeline on every selected frame, stores the 9-view sequence in HDF5, and
+packages it as an **MIV** (MPEG Immersive Video, ISO/IEC 23090-12) file using MPEG's
+reference software, TMIV.
+
+```
+scripts/build_tmiv.sh                                   # once: builds the patched TMIV into ./.tmiv
+sharp_video_to_miv -i input.mp4 -o output.miv --dump-hdf5 sequence.h5
+```
+
+Stage 1 still needs the CUDA environment from the quick start. MIV encoding and decoding run
+on the CPU, and `scripts/build_tmiv.sh` works on Linux and macOS.
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-i`, `--input` / `-o`, `--output` | *required* | Input video (MP4, H.264/H.265) / output `.miv`. |
+| `--dump-hdf5` | off | Keep the temporal HDF5 spatial sequence. |
+| `--mode` | `two-step` | `two-step` (video → HDF5 → MIV) or `streaming` (frames go straight to the encoder). |
+| `--start-frame` / `--end-frame` / `--max-frames` | whole clip | Frame selection, in presentation order. |
+| `--worker-count` | `1` | Frames spatialized concurrently (bounded by GPU memory). |
+| `--camera-config` | ±10° | JSON such as `{"angle_deg": 10}`. |
+| `--output-resolution` | source, rounded down to ×8 | View size `WIDTHxHEIGHT`. |
+| `--resume` | off | Reuse frames completed by an interrupted run. |
+| `--validate` | off | Decode the result with TmivDecoder and check it against the sequence. |
+| `--qp-texture` / `--qp-geometry` / `--intra-period` | `22` / `8` / `32` | Video coding settings. |
+
+Each run writes `output.miv`, `output.miv.json` (frame timestamps, conventions, stats), and
+a performance report `output.miv.report.md`. A frame that fails Stage 1 stops the run
+before any MIV is written, is recorded in the work directory's journal, and `--resume`
+continues from there.
+
+Further tools, none of which need a GPU:
+
+```
+sharp-video-validate sequence.h5 --temporal-json temporal.json   # per-frame + temporal checks
+sharp-video-inspect  sequence.h5 --frame 0 --out inspect/        # contact sheets, cameras
+sharp-miv-encode     sequence.h5 -o output.miv                   # the standalone MIV encoder
+sharp-miv-validate   output.miv --reference sequence.h5          # independent decode + checks
+```
+
+Formats and design: [`docs/stage2_sequence_format.md`](docs/stage2_sequence_format.md),
+[`docs/stage2_miv.md`](docs/stage2_miv.md).
+
 ## Evaluation
 
 Please refer to the paper for both quantitative and qualitative evaluations.
