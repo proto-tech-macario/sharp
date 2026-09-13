@@ -62,7 +62,13 @@ fi
 
 step "Preparing build tools"
 VENV="$PREFIX/venv"
-[[ -x "$VENV/bin/python" ]] || python3 -m venv "$VENV"
+# A failed `python3 -m venv` leaves a venv without pip behind; rebuild it.
+if ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+  python3 -c "import ensurepip" 2>/dev/null \
+    || die "python3 cannot create virtual environments (no ensurepip); on Debian/Ubuntu: sudo apt install python3-venv"
+  rm -rf "$VENV"
+  python3 -m venv "$VENV"
+fi
 "$VENV/bin/python" -m pip install --quiet --upgrade pip
 "$VENV/bin/python" -m pip install --quiet cmake ninja
 export PATH="$VENV/bin:$PATH"

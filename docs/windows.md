@@ -252,6 +252,9 @@ then re-run `./setup.sh`.
 Windows Git (CRLF line endings). Delete it and clone again inside Ubuntu
 (step 5).
 
+**`build_tmiv.sh`: `No module named pip` or `no ensurepip`.** `python3-venv`
+is missing. Run `sudo apt install python3-venv`, then re-run the script.
+
 **`build_tmiv.sh` fails while compiling.** Check the compiler first:
 `gcc --version` must be 13 or newer (Ubuntu 24.04's default is). Re-running
 continues where it stopped. If it still fails, the first `error:` line in the
