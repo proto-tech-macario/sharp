@@ -1,0 +1,23 @@
+{
+  "asset_content_hash": "5d15fcb74bf2a6982cc4e3c14d3fa7e140a8197304a37a8f05cd8338149a7d7c",
+  "dataset_arrays_sha256": "5e9cacf3d724d3860ff34063d176696504a9274d9ab059ac1af9f20964428376",
+  "dataset_id": "synthetic-v1-96x96-baseline0.35",
+  "ds_image_sha256": "413a926b5cc7e110ed159f07dc029cad2a04712fca45412881a7c37e2c685310",
+  "ds_image_total_bytes": 12986,
+  "layer0_valid_pixels": 9216,
+  "layer1_valid_pixels": 1490,
+  "renders": {
+    "base": {
+      "coverage_sha256": "f9de1ef79c9d385cf14b1a1b1fd761391f3e985ce004b1a5942cb94a9275ba17",
+      "covered_pixels": 9216
+    },
+    "right": {
+      "coverage_sha256": "9fdab84550ff2d1e08dd0cbdec8f16784a8cc1d0e560ceee052f04df1b87beab",
+      "covered_pixels": 8713
+    },
+    "up": {
+      "coverage_sha256": "54aef8bd9b39bf33c58bd2afc03eb4f7c657ae78d0342071928e31766fc253e9",
+      "covered_pixels": 8703
+    }
+  }
+}

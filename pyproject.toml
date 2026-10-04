@@ -5,6 +5,8 @@ description = "Inference/Network/Model code for SHARP view synthesis model."
 readme = "README.md"
 dependencies = [
   "click",
+  "numpy",
+  "pillow",
   "gsplat",
   "h5py",
   "imageio[ffmpeg]",
@@ -22,6 +24,7 @@ sharp = "sharp.cli:main_cli"
 sharp-spatialize = "sharp_spatialize.cli:generate_cli"
 sharp-spatialize-validate = "sharp_spatialize.cli:validate_cli"
 sharp-spatialize-webui = "sharp_spatialize.webui.server:main"
+ds_m0 = "ds_m0.tools.command_line:main"
 
 [project.urls]
 Homepage = "https://github.com/apple/ml-sharp"
@@ -47,6 +50,7 @@ pythonVersion = "3.13"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
+pythonpath = ["src", "tests/ds_m0"]
 addopts = "-ra -q"
 testpaths = [
     "tests"
