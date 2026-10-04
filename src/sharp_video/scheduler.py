@@ -38,6 +38,12 @@ class FrameSelection:
             return False
         return self.max_frames is None or selected_so_far < self.max_frames
 
+    def count(self, total: int) -> int:
+        """How many frames of a `total`-frame source this selects."""
+        end = total if self.end_frame is None else min(total, self.end_frame)
+        available = max(0, end - self.start_frame)
+        return available if self.max_frames is None else min(available, self.max_frames)
+
     def exhausted(self, index: int, selected_so_far: int) -> bool:
         """True once no frame at `index` or later can be selected (decoding may stop)."""
         if self.end_frame is not None and index >= self.end_frame:

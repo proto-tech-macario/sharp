@@ -29,7 +29,8 @@ GEOMETRY_FORMAT = "yuv420p16le"
 
 BLOCK_SIZE = 16
 MAX_LUMA_PICTURE_SIZE = 8912896  # per atlas, as in TMIV's CTC anchors
-PACKING_MARGIN = 1.25
+PACKING_MARGIN = 1.25  # only for views too big for one atlas
+SAMPLE_RATE_SLACK = 1.01
 
 
 def texture_input_path(view_name: str, width: int, height: int) -> str:
@@ -72,18 +73,30 @@ def sequence_config(
 def atlas_budget(width: int, height: int, fps: float, views: int = 9) -> tuple[int, int, float]:
     """(maxAtlases, maxLumaPictureSize, maxLumaSampleRate) that fit every view in full.
 
-    TMIV derives the atlas count and size from the luma sample-rate budget
-    (texture + full-resolution geometry per atlas sample) and the per-atlas
-    picture limit; this sizes both so the 9 complete views always fit.
+    TMIV makes each atlas as wide as the views and as tall as the picture size
+    allows, and with NoPruner every view is one whole patch, so the views stack
+    in a column. The atlases are sized to hold exactly that column, split
+    evenly between as few atlases as the per-atlas picture limit allows: empty
+    atlas area still costs VVenC time and raw-YUV disk (a 25% margin used to
+    spill 1280x720 views into a second, nearly empty atlas, doubling both).
     """
-    padded = (math.ceil(width / BLOCK_SIZE) * BLOCK_SIZE) * (math.ceil(height / BLOCK_SIZE)
-                                                             * BLOCK_SIZE)
-    total = int(views * padded * PACKING_MARGIN)
-    block_area = BLOCK_SIZE * BLOCK_SIZE
-    picture_size = min(MAX_LUMA_PICTURE_SIZE, math.ceil(total / block_area) * block_area)
-    max_atlases = math.ceil(total / picture_size)
+    padded_width = math.ceil(width / BLOCK_SIZE) * BLOCK_SIZE
+    padded_height = math.ceil(height / BLOCK_SIZE) * BLOCK_SIZE
+    rows = MAX_LUMA_PICTURE_SIZE // padded_width // BLOCK_SIZE * BLOCK_SIZE
+    per_atlas = min(views, rows // padded_height)
+    if per_atlas:
+        max_atlases = math.ceil(views / per_atlas)
+        picture_size = padded_width * padded_height * math.ceil(views / max_atlases)
+    else:  # one view is over the picture limit: TMIV has to split it into patches
+        total = int(views * padded_width * padded_height * PACKING_MARGIN)
+        picture_size = MAX_LUMA_PICTURE_SIZE
+        max_atlases = math.ceil(total / picture_size)
     samples_per_atlas_sample = 2.0  # texture + geometry, both at full resolution
-    sample_rate = float(max_atlases * picture_size * samples_per_atlas_sample * fps)
+    # TMIV turns the rate back into whole blocks per frame (rate / fps, truncated),
+    # which at e.g. 30000/1001 fps loses a block and with it the last view's row.
+    # The overshoot is harmless: maxLumaPictureSize and maxAtlases still bind.
+    sample_rate = float(max_atlases * picture_size * samples_per_atlas_sample * fps
+                        * SAMPLE_RATE_SLACK)
     return max_atlases, picture_size, sample_rate
 
 

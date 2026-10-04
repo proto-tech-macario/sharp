@@ -9,6 +9,7 @@ as the 9 views are rendered (spec §29).
 
 from __future__ import annotations
 
+import gc
 import json
 import sys
 import time
@@ -75,6 +76,22 @@ def _peak_gpu() -> int | None:
     if torch is not None and torch.cuda.is_available():
         return int(torch.cuda.max_memory_allocated())
     return None
+
+
+def release_stage1() -> None:
+    """Drop Stage 1's cached predictor and hand its GPU memory back.
+
+    The predictor stays cached between frames (`cache_predictor=True`); once
+    the last frame is done it only holds memory the MIV encode needs, and TMIV
+    runs in a separate process that cannot use what this one has cached.
+    """
+    inference = sys.modules.get("sharp_spatialize.inference")
+    if inference is not None:
+        inference.load_predictor.cache_clear()
+    gc.collect()
+    torch = _torch()
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 def _stage1_generate(image_path, **kwargs):

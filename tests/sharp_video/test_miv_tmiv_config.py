@@ -96,3 +96,15 @@ def test_atlas_budget_covers_nine_full_views(width, height):
     # texture + full-resolution geometry, every frame
     assert sample_rate >= 2 * 9 * width * height * 30.0
     assert picture_size <= 8912896
+
+
+@pytest.mark.parametrize("width,height,atlases,rows", [
+    (1280, 720, 1, 6480),  # measured: TMIV packs one 1280x6480 atlas
+    (608, 1080, 1, 9792),  # measured: 1080 pads to 1088, one 608x9792 atlas
+    (1920, 1080, 3, 3264),  # three views to an atlas, none left nearly empty
+])
+def test_atlases_hold_the_views_stacked_with_no_spare_room(width, height, atlases, rows):
+    """Atlases are the views' column, split evenly: no empty area for VVenC to encode."""
+    max_atlases, picture_size, _ = atlas_budget(width, height, fps=30.0)
+    assert max_atlases == atlases
+    assert picture_size == (width + 15) // 16 * 16 * rows

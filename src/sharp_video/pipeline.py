@@ -17,14 +17,15 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from . import diskspace
 from .contract import SequenceInfo
 from .miv.encoder import MIVEncoder, MIVEncoderConfig, MIVEncodeResult, encode_sequence
 from .miv.tmiv import TmivInstall, find_tmiv, run_logged
 from .report import build_report, peak_rss_bytes, write_report
-from .runner import process_frames
+from .runner import cached_frame_count, process_frames
 from .scheduler import FrameSelection
 from .sequence_io import SequenceReader, SequenceWriter
-from .spatializer import CameraConfig, Stage1Spatializer
+from .spatializer import CameraConfig, Stage1Spatializer, release_stage1
 from .video_io import iter_frames, probe_video
 
 MODES = ("two-step", "streaming")
@@ -59,6 +60,8 @@ class PipelineOptions:
     qp_geometry: int = 8
     intra_period: int = 32
     threads: int = 4
+    check_disk: bool = True  # refuse to start a run that would fill the disk
+    keep_intermediate: bool = True  # False: delete TMIV's raw YUV files once it is done
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -89,6 +92,13 @@ def run_video_to_miv(
     output_size = options.output_size or default_output_size(video.width, video.height)
     work_dir = Path(options.work_dir or f"{options.output}.work")
     tmiv = tmiv or find_tmiv(options.tmiv_dir)  # fail before hours of Stage 1 work
+    if options.check_disk:  # ... and before it fills the disk hours in
+        frames = selection.count(video.frame_count)
+        cached = cached_frame_count(work_dir / "stage1") if options.resume else 0
+        needed = diskspace.estimate(
+            *output_size, video.fps, frames, cached_frames=cached,
+            sequence=options.mode == "two-step" or options.dump_hdf5 is not None)
+        diskspace.check(work_dir, needed, frames)
 
     if spatialize is None:
         spatialize = Stage1Spatializer(
@@ -110,7 +120,7 @@ def run_video_to_miv(
         work_dir=work_dir / "miv", tmiv=tmiv, depth_near=options.depth_near,
         depth_far=options.depth_far, qp_texture=options.qp_texture,
         qp_geometry=options.qp_geometry, intra_period=options.intra_period,
-        threads=options.threads,
+        threads=options.threads, keep_intermediate=options.keep_intermediate,
     )
     outcomes = process_frames(
         iter_frames(options.input, selection), spatialize, work_dir / "stage1",
@@ -125,6 +135,7 @@ def run_video_to_miv(
                 writer.write_frame(outcome.frame)
                 timings.append(outcome.timings)
         stage1_time = time.perf_counter() - start
+        release_stage1()
         miv = encode_sequence(SequenceReader(sequence_path), miv_config, options.output,
                               runner=runner)
     else:
@@ -146,10 +157,13 @@ def run_video_to_miv(
         except BaseException:
             if writer is not None:
                 writer.abort()
+            if not options.keep_intermediate:
+                encoder.discard_intermediate()
             raise
         if writer is not None:
             writer.close()
         stage1_time = time.perf_counter() - start - encode_time
+        release_stage1()
         miv = encoder.finalize(options.output)
 
     total = time.perf_counter() - start

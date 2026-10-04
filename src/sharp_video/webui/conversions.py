@@ -356,6 +356,9 @@ def run_conversion(
                 checkpoint=checkpoint_path, device=device, precision=precision,
                 qp_texture=options.qp_texture, qp_geometry=options.qp_geometry,
                 intra_period=options.intra_period, threads=options.threads,
+                # TMIV's raw views and atlases are ~150 MB a frame at 1280x720;
+                # nothing here reads them back, so they go as soon as TMIV is done.
+                keep_intermediate=False,
             ),
             spatialize=spatialize,
             tmiv=tmiv,

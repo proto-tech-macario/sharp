@@ -98,12 +98,15 @@ def _fail(message: str, code: int = 1) -> None:
               show_default=True, help="Autocast dtype for the SHARP forward pass.")
 @click.option("--validate", "run_validation", is_flag=True,
               help="Afterwards, decode the MIV file with TmivDecoder and check it.")
+@click.option("--no-disk-check", is_flag=True,
+              help="Start even if the run looks like it would fill the disk.")
 @_miv_options
 def video_to_miv_cli(input_path, output_path, dump_hdf5, mode, start_frame, end_frame,
                      max_frames, worker_count, camera_config, output_resolution, work_dir,
-                     resume, checkpoint, device, precision, run_validation, tmiv_dir,
+                     resume, checkpoint, device, precision, run_validation, no_disk_check, tmiv_dir,
                      depth_near, depth_far, qp_texture, qp_geometry, intra_period, threads):
     """Convert a video into a 9-view spatial MIV file (Stage 2)."""
+    from .diskspace import InsufficientDiskSpaceError
     from .miv.tmiv import TmivError, TmivNotFoundError
     from .video_io import UnsupportedVideoError
 
@@ -117,13 +120,15 @@ def video_to_miv_cli(input_path, output_path, dump_hdf5, mode, start_frame, end_
             output_size=output_resolution, resume=resume, checkpoint=checkpoint,
             device=device, precision=precision, tmiv_dir=tmiv_dir, depth_near=depth_near,
             depth_far=depth_far, qp_texture=qp_texture, qp_geometry=qp_geometry,
-            intra_period=int(intra_period), threads=threads,
+            intra_period=int(intra_period), threads=threads, check_disk=not no_disk_check,
         )
     except ValueError as exc:
         _fail(str(exc), code=2)
 
     try:
         result = run_video_to_miv(options)
+    except InsufficientDiskSpaceError as exc:
+        _fail(f"{exc} (--no-disk-check starts anyway.)")
     except UnsupportedVideoError as exc:
         _fail(str(exc), code=2)
     except FrameFailuresError as exc:

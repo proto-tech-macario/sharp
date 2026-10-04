@@ -43,6 +43,17 @@ raising out of the per-frame Stage 1 call, which is why `ConversionCancelled` is
 a `BaseException` -- `process_frames` journals a failing *frame* and carries on.
 
 MIV encoding and decoding need no GPU. Only Stage 1 (SHARP + gsplat) needs CUDA.
+
+**Disk.** A run writes ~200 MB of intermediates per frame at 1280x720 views:
+~45 MB in the Stage 1 frame cache, ~50 MB of raw views for TMIV, and the raw
+atlases plus VVenC's reconstruction (~75 MB). The pipeline estimates this up
+front (`diskspace.py`) and refuses a run that will not fit (`--no-disk-check`
+starts anyway). On WSL2 the free space that counts is the Windows drive under
+the growable `ext4.vhdx`, not what `df` reports inside Linux. When that drive
+fills, the whole VM stops. The web UI deletes TMIV's raw YUV files as soon as
+TMIV is done (`keep_intermediate=False`), and the SHARP predictor is released
+before TMIV starts, which frees ~6 GB of GPU memory.
+
 `scripts/build_tmiv.sh` builds on Linux (GCC) and macOS (Apple clang). On macOS
 it bumps fmt to 11.2.0 and silences three warnings that TMIV's dependencies turn
 into errors on newer clang.
@@ -100,6 +111,7 @@ total: 76 added lines in 4 files (`Encoder_main.cpp`, `Encoder.cpp`,
 | `intraPeriod` | 32 (16 allowed) | VVenC random access supports only GOP 16/32 with GOP = intra period |
 | `interPeriod` | 1 | one common atlas frame per frame, which carries the camera update |
 | geometry | full resolution, 10-bit video, occupancy embedded, dynamic depth range | depth precision |
+| atlases | the 9 views stacked in one column, split evenly over as few atlases as `maxLumaPictureSize` allows (1280x720 → one 1280x6480 atlas) | no empty atlas area for VVenC to encode |
 | QP | texture 22, geometry 8 | `--qp-texture`, `--qp-geometry` |
 | depth range | 0.1–1000 m (fixed per run) | `--depth-near/--depth-far`; clamped pixels are counted in the manifest |
 

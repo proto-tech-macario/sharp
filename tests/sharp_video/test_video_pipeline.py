@@ -88,6 +88,45 @@ def test_selection_is_applied_and_timing_retained(tmp_path, clip):
     assert manifest["frames"][0]["timestamp"] == pytest.approx(2 * 1001 / 30000, abs=1e-3)
 
 
+def test_a_run_that_would_fill_the_disk_is_refused_before_stage1(tmp_path, clip,
+                                                                  monkeypatch):
+    """The disk check runs before any frame is spatialized, and can be turned off."""
+    from sharp_video import diskspace
+
+    monkeypatch.setattr(diskspace, "free_bytes", lambda path: (1000, "a tiny disk"))
+    spatializer = FakeSpatializer()
+    options = PipelineOptions(input=clip, output=tmp_path / "out.miv", output_size=(32, 32),
+                              work_dir=tmp_path / "work")
+    with pytest.raises(diskspace.InsufficientDiskSpaceError, match="6 frames"):
+        run_video_to_miv(options, spatialize=spatializer, runner=FakeRunner(),
+                         tmiv=TmivInstall(tmp_path / "tmiv"))
+    assert spatializer.calls == []
+
+    result, _ = _run(tmp_path, clip, check_disk=False)
+    assert result.miv.frame_count == 6
+
+
+def test_stage1_is_released_before_tmiv_runs(tmp_path, clip, monkeypatch):
+    """The cached predictor is dropped before TMIV starts, in both modes."""
+    import sharp_video.pipeline as pipeline
+
+    for mode in ("two-step", "streaming"):
+        events = []
+        monkeypatch.setattr(pipeline, "release_stage1", lambda: events.append("release"))
+        options = PipelineOptions(input=clip, output=tmp_path / mode / "out.miv",
+                                  output_size=(32, 32), work_dir=tmp_path / mode / "work",
+                                  mode=mode)
+        runner = FakeRunner()
+
+        def record(cmd, log_path, cwd=None, env=None, runner=runner):
+            events.append("tmiv")
+            runner(cmd, log_path, cwd=cwd, env=env)
+
+        run_video_to_miv(options, spatialize=FakeSpatializer(), runner=record,
+                         tmiv=TmivInstall(tmp_path / "tmiv"))
+        assert events == ["release", "tmiv"], mode
+
+
 def test_failed_frame_stops_before_miv(tmp_path, clip):
     """Failed frame stops before miv."""
     options = PipelineOptions(input=clip, output=tmp_path / "out.miv", output_size=(32, 32),

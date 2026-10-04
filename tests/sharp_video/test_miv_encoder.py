@@ -108,6 +108,31 @@ def test_texture_and_depth_written_faithfully(tmp_path):
     np.testing.assert_allclose(depth[mask == 1], view.depth[mask == 1], rtol=2e-3)
 
 
+def test_raw_yuv_is_deleted_once_tmiv_is_done_unless_kept(tmp_path):
+    """keep_intermediate=False leaves no raw view, atlas or recon YUV; logs and configs stay."""
+    def runner(cmd, log_path, cwd=None, env=None):
+        FakeRunner()(cmd, log_path, cwd=cwd, env=env)
+        (cmd[cmd.index("-o") + 1] / bitstream_output_path()).with_name("atlas.yuv") \
+            .write_bytes(b"atlas")
+        (cwd / "rec.yuv").write_bytes(b"recon")
+
+    result, _ = _encode(tmp_path, make_frames(2, W, H), runner=runner, keep_intermediate=False)
+    work = tmp_path / "work"
+    assert result.path.is_file()
+    assert not list(work.rglob("*.yuv"))
+    assert (work / "configs" / "encoder.json").is_file()
+
+
+def test_raw_yuv_is_deleted_when_tmiv_fails_too(tmp_path):
+    """A failed TMIV run does not leave tens of gigabytes behind either."""
+    def failing(cmd, log_path, cwd=None, env=None):
+        raise RuntimeError("TmivEncoder failed")
+
+    with pytest.raises(RuntimeError):
+        _encode(tmp_path, make_frames(2, W, H), runner=failing, keep_intermediate=False)
+    assert not list((tmp_path / "work").rglob("*.yuv"))
+
+
 def test_per_frame_camera_files_follow_moving_cameras(tmp_path):
     """Per frame camera files follow moving cameras."""
     frames = make_frames(3, drift=0.5)

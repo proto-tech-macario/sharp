@@ -56,6 +56,11 @@ def _cache_path(cache_dir: Path, index: int) -> Path:
     return cache_dir / f"{index:06d}.h5"
 
 
+def cached_frame_count(work_dir: str | Path) -> int:
+    """How many frames `process_frames` has cached under `work_dir` (unvalidated)."""
+    return sum(1 for _ in (Path(work_dir) / "frames").glob("*.h5"))
+
+
 def _save_cached(cache_dir: Path, frame: SpatialFrame) -> None:
     from sharp_spatialize import hdf5_io
 

@@ -74,6 +74,10 @@ class MIVEncoderConfig:
     qp_geometry: int = 8
     intra_period: int = 32
     threads: int = 4
+    # The raw YUV files (TMIV's input views, its atlases, VVenC's reconstruction)
+    # run to ~150 MB per frame at 1280x720; False deletes them once TMIV is done
+    # with them, successful or not. Logs, configs and sub-bitstreams are kept.
+    keep_intermediate: bool = True
 
     def __post_init__(self) -> None:
         self.work_dir = Path(self.work_dir)
@@ -252,10 +256,14 @@ class MIVEncoder:
             "-j", str(self.config.threads),
         ]
         tmiv_start = time.perf_counter()
-        # Run inside the work dir: TMIV's VVenC config writes its reconstruction
-        # ("ReconFile: rec.yuv") relative to the current directory.
-        self._runner(cmd, self.config.work_dir / "logs" / "encode.log",
-                     cwd=self.config.work_dir)
+        try:
+            # Run inside the work dir: TMIV's VVenC config writes its reconstruction
+            # ("ReconFile: rec.yuv") relative to the current directory.
+            self._runner(cmd, self.config.work_dir / "logs" / "encode.log",
+                         cwd=self.config.work_dir)
+        finally:
+            if not self.config.keep_intermediate:
+                self.discard_intermediate()
         tmiv_time = time.perf_counter() - tmiv_start
 
         bitstream = self.output_dir / bitstream_output_path()
@@ -278,6 +286,13 @@ class MIVEncoder:
         )
         self._write_json(manifest_path, self._manifest(result))
         return result
+
+    def discard_intermediate(self) -> None:
+        """Close and delete every raw .yuv file under the work dir (inputs, atlases, recon)."""
+        for handle in self._files.values():
+            handle.close()
+        for path in self.config.work_dir.rglob("*.yuv"):
+            path.unlink(missing_ok=True)
 
     def _is_cfr(self) -> bool:
         """Whether every timestamp sits within half a frame of `t0 + i / fps`."""

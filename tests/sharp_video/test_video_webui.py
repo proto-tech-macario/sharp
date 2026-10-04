@@ -556,6 +556,16 @@ def test_the_bulky_intermediates_are_deleted_and_the_miv_is_kept(tmp_path):
     assert not conversion.work_dir.exists()
 
 
+def test_conversions_do_not_keep_tmivs_raw_yuv(tmp_path):
+    """The browser never reads TMIV's raw views or atlases, so the pipeline deletes them."""
+    seen = []
+    run = fake_pipeline(source_frames=2)
+    conversion = make_conversion(tmp_path)
+    run_conversion(conversion, spatializer=fake_spatializer, probe=lambda path: make_video_info(),
+                   run=lambda options, **kw: (seen.append(options), run(options, **kw))[1])
+    assert seen[0].keep_intermediate is False and seen[0].check_disk is True
+
+
 def test_a_failed_conversion_reports_why_and_leaves_no_half_written_clip(tmp_path):
     """A pipeline failure is surfaced verbatim, and the library is not offered a stub."""
     conversion = make_conversion(tmp_path)
