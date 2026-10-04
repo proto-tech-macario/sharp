@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHARP · Spatial Video Preview</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🎞️</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/video/static/modes.css">
+<link rel="stylesheet" href="/video/static/video.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span class="brand-name">SHARP</span>
+      <span class="brand-sub">spatial video preview</span>
+    </div>
+    <nav class="modes" aria-label="Mode">
+      <a href="/">Photo</a><a href="/video" class="active" aria-current="page">Video</a>
+    </nav>
+    <div class="chips">
+      <span id="tmivChip" class="chip">connecting…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button"
+           aria-label="Choose a video to convert, or a .miv file to preview">
+        <svg class="dz-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3.5 15.5v2A2.5 2.5 0 0 0 6 20h12a2.5 2.5 0 0 0 2.5-2.5v-2"
+                fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <div class="dz-title">Drop a video or a .miv file</div>
+        <div class="dz-sub">or <span class="link">browse</span> ·
+          <span id="dzFormats">mp4, mov, mkv… → MIV</span></div>
+        <input type="file" id="fileInput" accept=".miv" hidden>
+      </div>
+
+      <form id="convertCard" class="convert-card" hidden>
+        <div class="field-title">
+          <span>Convert to MIV</span>
+          <button id="convertClear" class="mini-btn" type="button">Cancel</button>
+        </div>
+        <p id="convertFile" class="hint"></p>
+
+        <div class="convert-grid">
+          <label class="convert-field">Frames
+            <input type="number" id="optFrames" min="1" step="1"
+                   placeholder="all of it" inputmode="numeric">
+          </label>
+          <label class="convert-field">Start at frame
+            <input type="number" id="optStart" min="0" step="1" value="0" inputmode="numeric">
+          </label>
+          <label class="convert-field">View height
+            <select id="optHeight"></select>
+          </label>
+          <div class="convert-field convert-wide">
+            <label class="convert-label" for="optAngle">
+              Camera angle <output id="optAngleOut" for="optAngle">10°</output>
+            </label>
+            <input type="range" id="optAngle" min="2" max="30" step="0.5" value="10">
+          </div>
+          <label class="convert-field convert-wide">MIV quality
+            <select id="optQuality">
+              <option value="16,4">High — QP 16 / 4, biggest file</option>
+              <option value="22,8" selected>Balanced — QP 22 / 8</option>
+              <option value="30,12">Small — QP 30 / 12, softest</option>
+            </select>
+          </label>
+        </div>
+
+        <button id="convertBtn" class="primary-btn" type="submit">Convert and preview</button>
+        <p class="hint">Stage 1 spatializes every frame on the GPU — seconds to minutes each —
+          then TMIV encodes the MIV file. <em>Frames</em> is empty by default, so the whole
+          video is converted; set it to take a shorter look first. The camera angle is the
+          same one the photo page has: how far the 9 views swing from the centre.</p>
+      </form>
+
+      <div id="conversionsField" class="field" hidden>
+        <div class="field-title"><span>Conversions</span></div>
+        <ul id="conversions" class="library"></ul>
+      </div>
+
+      <div class="field">
+        <div class="field-title">
+          <span>Library</span>
+          <button id="refreshBtn" class="mini-btn" type="button">Rescan</button>
+        </div>
+        <ul id="library" class="library"></ul>
+        <p id="libraryHint" class="hint"></p>
+      </div>
+
+      <p id="statusLine" class="status-line"></p>
+
+      <div id="infoCard" class="info-card" hidden>
+        <div class="info-head">
+          <span id="validBadge" class="badge"
+                title="These are the views TmivDecoder, the MPEG reference decoder, reconstructs from the file.">decoded</span>
+          <span id="timingText" class="info-time"></span>
+        </div>
+        <dl id="infoList" class="info-list"></dl>
+        <a id="downloadLink" class="ghost-btn" download>Download the 3×3 preview (MP4)</a>
+      </div>
+    </aside>
+
+    <section class="viewer">
+      <div class="toolbar">
+        <div class="segmented" role="group" aria-label="Layer">
+          <button class="seg active" data-mode="rgb">Color</button>
+          <button class="seg" data-mode="depth">Depth</button>
+        </div>
+        <div class="segmented" role="group" aria-label="Layout">
+          <button class="seg active" data-layout="single" title="One view; move over it to look around">Parallax</button>
+          <button class="seg" data-layout="grid" title="All 9 views at once (G)">3×3 grid</button>
+        </div>
+        <button id="orbitBtn" class="tool-btn" disabled>
+          <span class="dot-orbit"></span> Auto-orbit
+        </button>
+        <button id="pinBtn" class="tool-btn" disabled>Pin view</button>
+        <div class="spacer"></div>
+        <div id="viewLabel" class="view-label">—</div>
+      </div>
+
+      <div id="stage" class="stage">
+        <div id="viewport" class="viewport single" hidden>
+          <video id="colorVideo" muted playsinline loop preload="auto"></video>
+          <video id="depthVideo" muted playsinline loop preload="auto"></video>
+          <div class="grid-lines"></div>
+          <div class="grid-cursor"></div>
+        </div>
+
+        <div id="emptyState" class="overlay empty">
+          <div class="empty-inner">
+            <div class="empty-title">Nine views, every frame</div>
+            <p>Drop in an ordinary video and it is converted here — SHARP spatializes each
+              frame into 9 views, TMIV encodes them as MIV — and then previewed. A clip from
+              the library, or a <code>.miv</code> you drop in, goes straight to the preview.</p>
+            <p>Either way you are watching what TmivDecoder, the MPEG reference decoder,
+              reconstructs, exactly as a player would see it.</p>
+            <p class="empty-hint">While it plays, move your pointer across the video to look
+              around the scene, or switch to the 3&times;3 grid to see every camera at once.</p>
+          </div>
+        </div>
+
+        <div id="progressOverlay" class="overlay progress" hidden>
+          <div class="progress-inner">
+            <div class="spinner" aria-hidden="true"></div>
+            <div id="progressStage" class="progress-stage">Starting…</div>
+            <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+            <div id="progressNote" class="progress-note"></div>
+            <button id="stopBtn" class="ghost-btn stop-btn" type="button" hidden>Stop
+              converting</button>
+          </div>
+        </div>
+
+        <div id="errorOverlay" class="overlay error" hidden>
+          <div class="error-inner">
+            <div id="errorTitle" class="error-title">That preview failed</div>
+            <pre id="errorText"></pre>
+          </div>
+        </div>
+
+        <div id="indicator" class="indicator" hidden aria-hidden="true"></div>
+        <div id="parallaxHint" class="parallax-hint" hidden>move to look around · space to pause</div>
+      </div>
+
+      <div id="transport" class="transport" hidden>
+        <button id="playBtn" class="tool-btn play-btn" aria-label="Play (space)" title="Play / pause (space)">▶</button>
+        <button id="prevBtn" class="tool-btn step-btn" aria-label="Previous frame" title="Previous frame (,)">‹</button>
+        <button id="nextBtn" class="tool-btn step-btn" aria-label="Next frame" title="Next frame (.)">›</button>
+        <input type="range" id="scrubber" min="0" max="0" step="1" value="0" aria-label="Frame">
+        <span id="frameText" class="frame-text">—</span>
+        <select id="speed" aria-label="Playback speed">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+        </select>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="/video/static/video.js"></script>
+</body>
+</html>

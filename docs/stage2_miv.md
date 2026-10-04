@@ -30,7 +30,17 @@ sharp_video_to_miv -i input.mp4 -o output.miv          # needs the CUDA Stage 1 
 sharp_video_to_miv -i input.mp4 -o output.miv --dump-hdf5 seq.h5 --validate
 sharp-miv-encode seq.h5 -o output.miv                  # standalone encoder, no GPU
 sharp-miv-validate output.miv --reference seq.h5       # TmivDecoder + checks, no GPU
+sharp-video-webui ~/out                                # the same pipeline, in a browser
 ```
+
+`sharp-video-webui` runs both halves of this document from one page: drop in an
+mp4 and it queues `run_video_to_miv` on a worker thread (`webui/conversions.py`)
+with the frame range, view height, camera angle and QPs the page asks for, then
+previews the .miv it wrote by decoding it with TmivDecoder (`webui/previews.py`).
+The pipeline itself is untouched by the web UI: progress is counted off the
+per-frame cache `runner.process_frames` already writes, and a run is stopped by
+raising out of the per-frame Stage 1 call, which is why `ConversionCancelled` is
+a `BaseException` -- `process_frames` journals a failing *frame* and carries on.
 
 MIV encoding and decoding need no GPU. Only Stage 1 (SHARP + gsplat) needs CUDA.
 `scripts/build_tmiv.sh` builds on Linux (GCC) and macOS (Apple clang). On macOS
@@ -73,8 +83,15 @@ information with `num_units_in_tick = 1`, so it accepts only integer rates and
 aborts on 29.97 fps video. The patch codes NTSC-family rates as
 `time_scale / num_units_in_tick = 30000 / 1001` (integer rates keep a tick of 1).
 It also has `encode.py` pass VVenC the same fraction (`-fr 30000 --FrameScale 1001`)
-instead of a float. In total: 67 added lines in 4 files
-(`Encoder_main.cpp`, `Encoder.cpp`, `ViewOptimizerStage.cpp`, `scripts/encode.py`).
+instead of a float.
+
+Finally, `encode.py` decodes tool output with `errors="replace"`. When a plane
+is lossless in every frame (a constant geometry atlas, e.g. a static or empty
+scene), VVenC 1.12's summary row overflows its 256-byte format buffer and the
+retry reuses a consumed `va_list`, printing garbage bytes; stock `encode.py`
+then aborts with `UnicodeDecodeError` after every bitstream was written. In
+total: 76 added lines in 4 files (`Encoder_main.cpp`, `Encoder.cpp`,
+`ViewOptimizerStage.cpp`, `scripts/encode.py`).
 
 ### Encoder settings
 

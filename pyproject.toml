@@ -28,6 +28,7 @@ sharp-video-validate = "sharp_video.cli:validate_sequence_cli"
 sharp-video-inspect = "sharp_video.cli:inspect_cli"
 sharp-miv-encode = "sharp_video.cli:miv_encode_cli"
 sharp-miv-validate = "sharp_video.cli:miv_validate_cli"
+sharp-video-webui = "sharp_video.webui.server:main"
 
 [project.urls]
 Homepage = "https://github.com/apple/ml-sharp"
@@ -42,6 +43,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "sharp_spatialize.webui" = ["static/*"]
+"sharp_video.webui" = ["static/*"]
 
 [tool.pyright]
 include = ["src"]
@@ -54,6 +56,9 @@ pythonVersion = "3.13"
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-ra -q"
+# Keep tmp dirs only for failed tests: test_load_predictor_checkpoint_path_branch
+# writes a multi-GB checkpoint, which fills a tmpfs /tmp (e.g. WSL2) within a few runs.
+tmp_path_retention_policy = "failed"
 testpaths = [
     "tests"
 ]

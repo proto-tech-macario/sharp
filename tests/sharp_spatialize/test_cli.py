@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 from click.testing import CliRunner
 from sharp_spatialize.cli import generate_cli, validate_cli
 from sharp_spatialize.hdf5_io import save
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_validate_cli_passes_on_a_consistent_file(tmp_path, consistent_spatial_photo_result):
@@ -67,7 +70,7 @@ def test_validate_cli_import_does_not_pull_in_gsplat():
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
-        cwd="/Users/macariofang/sharp",
+        cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     )
@@ -97,7 +100,7 @@ def test_load_spatial_photo_attribute_access_does_not_pull_in_gsplat():
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
-        cwd="/Users/macariofang/sharp",
+        cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     )

@@ -145,6 +145,9 @@ Stage 1's own tests still pass on this branch:
 .venv/bin/python -m pytest tests/sharp_spatialize -q
 ```
 
+`test_e2e.py` runs real SHARP on the GPU and takes a few minutes. For a quick
+check, add `-m "not slow"` to skip it.
+
 ## 9. Convert a video
 
 Windows drives appear under `/mnt/c`. Your outputs are visible from Windows

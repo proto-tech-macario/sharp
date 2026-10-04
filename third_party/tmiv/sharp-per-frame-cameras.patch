@@ -1,8 +1,27 @@
 diff --git a/scripts/encode.py b/scripts/encode.py
-index 23cd6e6..dd51de9 100755
+index 23cd6e6..fe8908f 100755
 --- a/scripts/encode.py
 +++ b/scripts/encode.py
-@@ -635,9 +635,19 @@ class MivEncoder:
+@@ -614,8 +614,17 @@ class MivEncoder:
+             self.__do_run_subprocess(args_s, None)
+ 
+     def __do_run_subprocess(self, args_s: list[str], stream):
++        # Tolerate non-UTF-8 tool output (SHARP Stage 2): when a plane is lossless in every frame
++        # (e.g. a constant geometry atlas), VVenC's summary row can contain garbage bytes, which
++        # would otherwise abort an encode that succeeded.
+         with Popen(
+-            args_s, bufsize=1, stdout=PIPE, stderr=STDOUT, text=True, encoding="utf8"
++            args_s,
++            bufsize=1,
++            stdout=PIPE,
++            stderr=STDOUT,
++            text=True,
++            encoding="utf8",
++            errors="replace",
+         ) as process:
+             for line in process.stdout:
+                 print(line.rstrip(), flush=True)
+@@ -635,9 +644,19 @@ class MivEncoder:
  
  
  class MivVvencEncoder(MivEncoder):
@@ -23,7 +42,7 @@ index 23cd6e6..dd51de9 100755
          bit_depth = vsb_info["bit_depth"]
  
          args = (
-@@ -649,6 +659,7 @@ class MivVvencEncoder(MivEncoder):
+@@ -649,6 +668,7 @@ class MivVvencEncoder(MivEncoder):
              + ["-q", self.quantization_parameters(vsb_info, rate_id)]
              + ["-f", self.frame_count]
              + ["-fr", frame_rate]

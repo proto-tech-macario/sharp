@@ -26,7 +26,7 @@ from .camera import camera_from_tmiv_json
 from .depth import geometry_to_depth
 from .tmiv import TmivInstall, find_tmiv, run_logged
 from .tmiv_config import CONTENT_ID, RATE_ID, decoder_config
-from .yuv import read_yuv420_frame, yuv420_to_rgb
+from .yuv import frame_nbytes, read_yuv420_frame, yuv420_to_rgb
 
 _FORMAT_BIT_DEPTH = {"yuv420p": 8, "yuv420p10le": 10, "yuv420p12le": 12, "yuv420p16le": 16,
                      "gray": 8, "gray10le": 10, "gray12le": 12, "gray16le": 16}
@@ -161,3 +161,46 @@ def decode_miv(
     runner([tmiv.exe("TmivParser"), "-b", miv_path, "-o", parser_dump],
            work_dir / "logs" / "parse.log", cwd=work_dir)
     return DecodedMiv(work_dir / "decoded", frame_count, parser_dump)
+
+
+def frame_count_from_parser_dump(text: str) -> int:
+    """Frames in a bitstream, from TmivParser's dump: one atlas tile header per atlas per frame."""
+    atlases = re.search(r"^vps_atlas_count_minus1=(\d+)", text, re.MULTILINE)
+    headers = len(re.findall(r"^ath_id=", text, re.MULTILINE))
+    if atlases is None or headers == 0:
+        raise ValueError("TmivParser found no V3C parameter set or atlas frames")
+    return headers // (int(atlases[1]) + 1)
+
+
+def probe_frame_count(
+    miv_path: str | Path,
+    work_dir: str | Path,
+    tmiv: TmivInstall | None = None,
+    runner=run_logged,
+) -> int:
+    """Count the frames of `miv_path` with TmivParser, which parses without decoding.
+
+    TmivDecoder needs the frame count up front; the Stage 2 manifest records it,
+    so this is for a .miv that arrives without its manifest.
+    """
+    tmiv = tmiv or find_tmiv()
+    work_dir = Path(work_dir).resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+    dump = work_dir / "probe.hls"
+    runner([tmiv.exe("TmivParser"), "-b", Path(miv_path).resolve(), "-o", dump],
+           work_dir / "logs" / "probe.log", cwd=work_dir)
+    return frame_count_from_parser_dump(dump.read_text())
+
+
+def decoded_frames_written(decoded_dir: str | Path) -> int:
+    """How many frames TmivDecoder has written to `decoded_dir` so far (for progress).
+
+    TmivDecoder writes frame by frame, so view 0's texture file grows one frame at a time.
+    """
+    for path in Path(decoded_dir).glob("00_tex_*.yuv"):
+        match = _FILE_RE.match(path.name)
+        if match:
+            _, _, width, height, fmt = match.groups()
+            return path.stat().st_size // frame_nbytes(int(width), int(height),
+                                                       _FORMAT_BIT_DEPTH[fmt])
+    return 0

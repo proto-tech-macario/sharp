@@ -20,7 +20,10 @@ from sharp_spatialize.validation import validate_file
 
 SAMPLE_IMAGE = Path(__file__).resolve().parents[2] / "data" / "teaser.jpg"
 
-pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="requires a CUDA GPU")
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.skipif(not torch.cuda.is_available(), reason="requires a CUDA GPU"),
+]
 
 
 def test_generate_spatial_photo_end_to_end(tmp_path):

@@ -272,6 +272,51 @@ sharp-miv-encode     sequence.h5 -o output.miv                   # the standalon
 sharp-miv-validate   output.miv --reference sequence.h5          # independent decode + checks
 ```
 
+### Converting and previewing in the browser
+
+No ordinary video player can open a `.miv` file, so the web UI gets a **Video** tab, which
+both runs the conversion above and previews what comes out:
+
+```
+sharp-video-webui ~/out          # then open http://127.0.0.1:8738/video
+```
+
+**Drop in an ordinary video** (mp4, mov, mkv, … — H.264 or H.265 inside) and the page offers
+the handful of settings worth choosing per clip: how many frames to convert and where to
+start, the view height, the **camera angle** — the same slider the photo page has, how far
+the 9 views swing from the centre — and the MIV quality. Everything else — the checkpoint,
+the device, the precision — comes from the command line you started the server with. It then
+runs the same `sharp_video_to_miv` pipeline: SHARP spatializes each frame into 9 views on the
+GPU, TMIV encodes them as MIV, and the finished clip joins the library and is previewed.
+Progress is per frame, conversions queue rather than fight over the GPU, and **Stop
+converting** ends a run after the frame it is on.
+
+There is no frame limit: leave **Frames** empty (the default) and the whole video is
+converted, however long that takes. Stage 1 runs at seconds to minutes per frame, so a
+few minutes of footage is a long conversion — set a frame count to take a shorter look
+first, and stop a run whenever you like.
+
+**Or start from a `.miv`**: the page lists the `*.miv` files in the folders (or files) you
+name, and you can drop in any other. Picking one decodes it with TmivDecoder, the MPEG
+reference decoder, and turns the 9 reconstructed views into two 3×3 mosaic videos, one for
+colour and one for depth. Then:
+
+- **Parallax**: move over the video to look around, as on the photo page. Click to pin a view.
+- **3×3 grid**: all 9 cameras at once, arranged as the rig. Click a tile to open that view.
+- Play, pause, scrub, step frame by frame, change the speed, auto-orbit, and switch Color/Depth.
+- The info card shows frames, bitrate, QP, depth range and per-frame camera updates. You can
+  download the 3×3 preview as an ordinary MP4.
+
+Keys: `space` play/pause · `,` `.` step one frame · arrows move the camera · `D` depth ·
+`G` grid · `O` orbit.
+
+Each preview is built once, at about a second per frame at 720p, and then cached in
+`~/.cache/sharp-video-webui` (`--cache-dir` changes this). Converted clips are kept there too,
+next to their manifest and report, while the decoder's raw output and the conversion's spatial
+sequence — both far larger than what they produce — are deleted as soon as they are no longer
+needed. Previewing needs TMIV but no GPU; converting needs both, and finds this checkout's
+`.tmiv` from any folder. The **Photo** tab is the Stage 1 web UI, unchanged.
+
 Formats and design: [`docs/stage2_sequence_format.md`](docs/stage2_sequence_format.md),
 [`docs/stage2_miv.md`](docs/stage2_miv.md).
 

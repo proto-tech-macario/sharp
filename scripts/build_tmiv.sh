@@ -54,6 +54,9 @@ step "Applying $PATCH_NAME"
 if git -C "$SRC" apply --reverse --check "$PATCH" 2>/dev/null; then
   echo "already applied"
 else
+  # The checkout may carry an older revision of the patch: restore the pristine
+  # $TMIV_REF sources first (this discards any hand edits to tracked files).
+  git -C "$SRC" checkout --quiet -- .
   git -C "$SRC" apply "$PATCH"
 fi
 

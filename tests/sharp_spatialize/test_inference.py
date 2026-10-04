@@ -13,7 +13,6 @@ import sharp_spatialize.inference as inference_module
 import torch
 from PIL import Image
 from sharp.cli.predict import DEFAULT_MODEL_URL
-from sharp.models import PredictorParams, create_predictor
 from sharp.utils.gaussians import Gaussians3D
 
 
@@ -74,57 +73,51 @@ def test_infer_wires_together_load_predictor_and_forward_pass(tmp_path, monkeypa
     assert torch.isfinite(scene.gaussians.mean_vectors).all()
 
 
-def test_load_predictor_checkpoint_path_branch(tmp_path):
-    """Test the checkpoint-path branch of _load_predictor."""
-    # Build a real predictor and save its state dict
-    predictor_fresh = create_predictor(PredictorParams())
-    state_dict = predictor_fresh.state_dict()
+class _TinyPredictor(torch.nn.Module):
+    """A few-parameter stand-in for RGBGaussianPredictor in the loader tests.
 
+    The real model is ~2.8 GB; building it (and saving a copy to a tmpfs /tmp)
+    made these tests take minutes and push a WSL2 box into swap. The loader's
+    logic doesn't depend on the architecture, and test_e2e loads the real
+    checkpoint into the real model.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.linear = torch.nn.Linear(4, 4)
+
+
+def test_load_predictor_checkpoint_path_branch(tmp_path, monkeypatch):
+    """_load_predictor loads weights from a checkpoint path and names the model after the file."""
+    monkeypatch.setattr(inference_module, "create_predictor", lambda params: _TinyPredictor())
+    saved = _TinyPredictor()
     checkpoint_path = tmp_path / "test_model.pt"
-    torch.save(state_dict, checkpoint_path)
+    torch.save(saved.state_dict(), checkpoint_path)
 
-    # Load via the checkpoint path
     loaded_predictor, model_version = inference_module._load_predictor(checkpoint_path, "cpu")
 
-    # Verify it's the right type
-    from sharp.models import RGBGaussianPredictor
-    assert isinstance(loaded_predictor, RGBGaussianPredictor)
-
-    # Verify model_version is extracted correctly from checkpoint filename
+    assert isinstance(loaded_predictor, _TinyPredictor)
+    # A fresh _TinyPredictor has different random weights, so equality proves the file was loaded.
+    assert torch.equal(loaded_predictor.linear.weight, saved.linear.weight)
     assert model_version == "test_model.pt"
-
-    # Verify it's in eval mode
     assert loaded_predictor.training is False
 
 
 def test_load_predictor_default_download_branch(monkeypatch):
-    """Test the default-download branch of _load_predictor."""
-    # Build a fresh predictor's state dict to use as the mock return value
-    predictor_fresh = create_predictor(PredictorParams())
-    state_dict = predictor_fresh.state_dict()
+    """With no checkpoint path, _load_predictor fetches DEFAULT_MODEL_URL and is named after it."""
+    monkeypatch.setattr(inference_module, "create_predictor", lambda params: _TinyPredictor())
+    saved = _TinyPredictor()
+    requested_urls = []
 
-    # Track if the mock was called
-    call_tracker = {"called": False}
+    def fake_load_state_dict_from_url(url, progress=False):  # noqa: ARG001
+        requested_urls.append(url)
+        return saved.state_dict()
 
-    def mock_load_state_dict_from_url(url, progress=False):  # noqa: ARG001
-        call_tracker["called"] = True
-        return state_dict
+    monkeypatch.setattr(torch.hub, "load_state_dict_from_url", fake_load_state_dict_from_url)
 
-    # Monkeypatch torch.hub.load_state_dict_from_url
-    monkeypatch.setattr(torch.hub, "load_state_dict_from_url", mock_load_state_dict_from_url)
-
-    # Load via the default path (checkpoint_path=None)
     loaded_predictor, model_version = inference_module._load_predictor(None, "cpu")
 
-    # Verify the mock was called
-    assert call_tracker["called"]
-
-    # Verify model_version is extracted correctly from DEFAULT_MODEL_URL
-    # DEFAULT_MODEL_URL is something like "https://...../sharp_2572gikvuh.pt"
-    expected_filename = Path(DEFAULT_MODEL_URL.split("/")[-1])
-    assert model_version == expected_filename.name
-
-    # Verify it's the right type and in eval mode
-    from sharp.models import RGBGaussianPredictor
-    assert isinstance(loaded_predictor, RGBGaussianPredictor)
+    assert requested_urls == [DEFAULT_MODEL_URL]
+    assert torch.equal(loaded_predictor.linear.weight, saved.linear.weight)
+    assert model_version == Path(DEFAULT_MODEL_URL.split("/")[-1]).name
     assert loaded_predictor.training is False
