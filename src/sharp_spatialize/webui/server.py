@@ -10,6 +10,9 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
+import shutil
+import subprocess
 import threading
 import webbrowser
 from functools import partial
@@ -383,6 +386,34 @@ def describe_device() -> dict[str, Any]:
     }
 
 
+def _running_in_wsl() -> bool:
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return True
+    try:
+        return "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower()
+    except OSError:
+        return False
+
+
+def open_url(url: str) -> None:
+    """Open `url` in a browser, using the Windows browser when running under WSL.
+
+    WSL usually has no Linux browser, so `webbrowser.open` ends in xdg-open/gio
+    failing with "Operation not supported". explorer.exe hands the URL to the
+    Windows default browser, and localhost is forwarded from Windows to WSL.
+    """
+    explorer = shutil.which("explorer.exe") if _running_in_wsl() else None
+    if explorer is not None:
+        try:
+            subprocess.Popen(
+                [explorer, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            return
+        except OSError:
+            pass
+    webbrowser.open(url)
+
+
 def serve(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
@@ -406,7 +437,7 @@ def serve(
         print(f"  sample:    {sample if sample else 'not available'}")
         print("  Ctrl-C to stop.")
         if open_browser:
-            threading.Timer(0.5, webbrowser.open, args=(url,)).start()
+            threading.Timer(0.5, open_url, args=(url,)).start()
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
