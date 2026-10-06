@@ -13,7 +13,7 @@
     <div class="brand">
       <span class="brand-mark"></span>
       <span class="brand-name">SHARP</span>
-      <span class="brand-sub">spatial photo preview</span>
+      <span class="brand-sub">spatial photo &amp; DS-Image preview</span>
     </div>
     <div class="chips">
       <span id="deviceChip" class="chip">connecting…</span>
@@ -32,7 +32,8 @@
         </svg>
         <div class="dz-title">Drop an image</div>
         <div class="dz-sub">or <span class="link">browse</span> · JPEG, PNG, HEIC</div>
-        <input type="file" id="fileInput" accept="image/*,.heic,.heif" hidden>
+        <div class="dz-sub dz-alt">or an existing <code>spatial_photo.h5</code> (no GPU)</div>
+        <input type="file" id="fileInput" accept="image/*,.heic,.heif,.h5,.hdf5" hidden>
       </div>
       <button id="sampleBtn" class="ghost-btn" hidden>Use the bundled sample photo</button>
 
@@ -62,6 +63,40 @@
       <button id="runBtn" class="primary-btn" disabled>Generate spatial photo</button>
       <p id="statusLine" class="status-line"></p>
 
+      <div id="dsCard" class="info-card ds-card" hidden>
+        <div class="info-head">
+          <span class="card-title">DS-Image</span>
+          <span id="dsBadge" class="badge muted">not built</span>
+        </div>
+        <p class="hint">One JPEG holding the reference view plus a sparse layer of what is
+          hidden behind it. Built from the 9 views on the CPU.</p>
+        <div class="field">
+          <label for="dsCodec">Depth codec</label>
+          <select id="dsCodec">
+            <option value="float32_zlib">float32 + zlib — lossless</option>
+            <option value="uint16_quant_zlib">uint16 quantized — ~half the size</option>
+          </select>
+        </div>
+        <button id="dsBuildBtn" class="primary-btn secondary">Build DS-Image</button>
+        <div id="dsProgress" class="mini-progress" hidden>
+          <div class="progress-track"><div id="dsProgressBar" class="progress-bar"></div></div>
+          <span id="dsProgressText"></span>
+        </div>
+        <div id="dsResult" hidden>
+          <div class="size-head">
+            <span id="dsSizeTotal" class="size-total">—</span>
+            <span id="dsSizeRatio" class="size-ratio"></span>
+          </div>
+          <div id="dsSizeBar" class="size-bar" aria-label="DS-Image size breakdown"></div>
+          <dl id="dsSizeList" class="info-list size-list"></dl>
+          <div id="dsChecks" class="checks"></div>
+          <div class="btn-row">
+            <a id="dsDownload" class="ghost-btn" download>Download .ds.jpg</a>
+            <a id="dsOpen" class="ghost-btn" target="_blank" rel="noopener">Open as JPEG</a>
+          </div>
+        </div>
+        <p id="dsError" class="status-line error" hidden></p>
+      </div>
       <div id="infoCard" class="info-card" hidden>
         <div class="info-head">
           <span id="validBadge" class="badge">validated</span>
@@ -70,14 +105,29 @@
         <dl id="infoList" class="info-list"></dl>
         <a id="downloadLink" class="ghost-btn" download>Download spatial_photo.h5</a>
       </div>
+
     </aside>
 
     <section class="viewer">
+      <nav class="tabs" role="tablist" aria-label="Viewer">
+        <button class="tab active" role="tab" data-tab="views">9 views</button>
+        <button class="tab" role="tab" data-tab="layers" disabled>DS layers</button>
+        <button class="tab" role="tab" data-tab="free" disabled>Free view</button>
+        <button class="tab" role="tab" data-tab="quality" disabled>Quality</button>
+        <span id="tabHint" class="tab-hint">Build a DS-Image to unlock the DS tabs</span>
+      </nav>
+
+      <div id="paneViews" class="pane">
       <div class="toolbar">
         <div class="segmented" role="group" aria-label="Layer">
-          <button class="seg active" data-mode="rgb">Color</button>
-          <button class="seg" data-mode="depth">Depth</button>
+          <button class="seg active" data-mode="rgb" title="Reference views from SHARP">Color</button>
+          <button class="seg" data-mode="depth" title="Reference depth (D)">Depth</button>
+          <button class="seg ds-seg" data-mode="ds" title="DS Presenter render from the same camera (R)" disabled>DS render</button>
+          <button class="seg ds-seg" data-mode="err" title="Difference from the reference (E)" disabled>DS error</button>
         </div>
+        <button id="compareBtn" class="tool-btn" disabled title="Hold (or hold Space) to see the reference view">
+          Hold: reference
+        </button>
         <button id="orbitBtn" class="tool-btn" disabled>
           <span class="dot-orbit"></span> Auto-orbit
         </button>
@@ -117,9 +167,60 @@
 
         <div id="indicator" class="indicator" hidden aria-hidden="true"></div>
         <div id="parallaxHint" class="parallax-hint" hidden>move to look around</div>
+        <div id="modeTag" class="mode-tag" hidden></div>
+        <div id="errLegend" class="legend" hidden>
+          <span><i class="sw red"></i>colour error ×4</span>
+          <span><i class="sw blue"></i>hole (reference has content)</span>
+          <span><i class="sw dark"></i>outside the reference</span>
+        </div>
+        <div id="viewScore" class="view-score" hidden></div>
       </div>
 
       <div id="sheet" class="sheet" hidden></div>
+      </div>
+
+      <div id="paneLayers" class="pane" hidden>
+        <p class="pane-intro">What the DS-Image stores. <b>Layer 0</b> is the reference view
+          (colour as the primary JPEG, plus depth). <b>Layer 1</b> holds only pixels hidden
+          behind Layer 0 that the other 8 views can see.</p>
+        <div id="layerGrid" class="layer-grid"></div>
+      </div>
+
+      <div id="paneFree" class="pane" hidden>
+        <div class="toolbar">
+          <div class="free-controls">
+            <label>Left / right <input type="range" id="freeX" min="-1" max="1" step="0.01" value="0"><output id="freeXOut">0 cm</output></label>
+            <label>Up / down <input type="range" id="freeY" min="-1" max="1" step="0.01" value="0"><output id="freeYOut">0 cm</output></label>
+            <label>Forward / back <input type="range" id="freeZ" min="-1" max="1" step="0.01" value="0"><output id="freeZOut">0 cm</output></label>
+          </div>
+          <div class="spacer"></div>
+          <button id="freeReset" class="tool-btn">Reset</button>
+        </div>
+        <div id="freeStage" class="stage free-stage">
+          <img id="freeImg" alt="DS Presenter render" draggable="false">
+          <div id="freeBusy" class="free-busy" hidden><div class="spinner"></div></div>
+          <div id="freeInfo" class="view-score"></div>
+          <div class="parallax-hint free-hint">drag the image or use the sliders · the DS Presenter renders each position from the .ds.jpg</div>
+        </div>
+      </div>
+
+      <div id="paneQuality" class="pane scroll" hidden>
+        <p class="pane-intro">Each outer view in the <code>.h5</code> is a SHARP render from a known
+          camera, so it is a reference image: the DS Presenter renders from that same camera and
+          is compared with it. <b>Coverage</b> is the share of the reference's pixels the render
+          fills; <b>PSNR / SSIM / depth</b> are measured on the filled pixels only.</p>
+        <div id="qualityCards" class="quality-cards"></div>
+        <div class="loo-row">
+          <button id="looBtn" class="tool-btn">Run leave-one-out</button>
+          <div id="looProgress" class="mini-progress" hidden>
+            <div class="progress-track"><div id="looProgressBar" class="progress-bar"></div></div>
+          </div>
+          <span id="looText" class="hint">Rebuilds the DS-Image 8 times, each time without the view
+            it is then scored on — the honest novel-view test.</span>
+        </div>
+        <table id="qualityTable" class="quality-table"></table>
+        <p class="hint">Click a row to open that view in <i>DS error</i> mode.</p>
+      </div>
     </section>
   </main>
 </div>

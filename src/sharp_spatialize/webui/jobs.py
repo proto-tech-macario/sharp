@@ -29,6 +29,9 @@ except Exception:  # pragma: no cover - optional decoder, never fatal
     pass
 
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+#: An existing spatial_photo.h5 is much larger than a photo (9 views of float depth).
+MAX_H5_UPLOAD_BYTES = 1024 * 1024 * 1024
+H5_SUFFIXES = (".h5", ".hdf5")
 MAX_SIZE_CHOICES = (640, 960, 1280, 1600, 2048)
 DEFAULT_MAX_SIZE = 1280
 DEFAULT_ANGLE_DEG = 10.0
@@ -181,6 +184,8 @@ class Job:
     source_jpeg: bytes | None = None
     result: Any = None  # SpatialPhotoResult, kept only for the newest few jobs
     h5_path: Path | None = None
+    from_h5: bool = False  # loaded from an uploaded spatial_photo.h5 instead of generated
+    ds: Any = None  # ds.DSAnalysis of this job's DS-Image, once requested
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def report(self, stage: str, progress: float) -> None:
@@ -205,11 +210,19 @@ class Job:
                 "angle_deg": self.params.angle_deg,
                 "precision": self.params.precision,
                 "has_arrays": self.result is not None,
+                "from_h5": self.from_h5,
+                "ds": self.ds.status() if self.ds is not None else None,
             }
 
     def release_arrays(self) -> None:
-        """Drop the heavy float arrays, keeping the encoded previews."""
+        """Drop the heavy float arrays, keeping the encoded previews.
+
+        A DS analysis keeps its own (much smaller) asset for free-view renders, but
+        loses the 9 source views it needs for leave-one-out.
+        """
         self.result = None
+        if self.ds is not None and self.ds.loo_state != "running":
+            self.ds.source = None
 
     def cleanup(self) -> None:
         """Release everything this job holds, including its temp file."""
@@ -217,6 +230,9 @@ class Job:
         self.views = []
         self.depths = []
         self.source_jpeg = None
+        if self.ds is not None:
+            self.ds.cleanup()
+            self.ds = None
         if self.h5_path is not None:
             shutil.rmtree(self.h5_path.parent, ignore_errors=True)
             self.h5_path = None
@@ -301,6 +317,8 @@ def run_job(
     `generate` is injectable so this can be tested without SHARP or a GPU.
     """
     temp_dir: Path | None = None
+    if Path(job.params.filename).suffix.lower() in H5_SUFFIXES:
+        return load_h5_job(job, image_bytes)
     try:
         image, source_info = prepare_source_image(image_bytes, job.params.max_size)
         job.source_info = dict(source_info, filename=job.params.filename)
@@ -354,6 +372,66 @@ def run_job(
         if temp_dir is not None:
             shutil.rmtree(temp_dir, ignore_errors=True)
         _free_gpu_memory()
+
+
+def load_h5_result(path: Path) -> Any:
+    """Read a spatial_photo.h5 back into arrays (used once a job's arrays were released)."""
+    from ..hdf5_io import load
+
+    return load(path)
+
+
+def load_h5_job(job: Job, data: bytes, load: Callable[..., Any] | None = None) -> None:
+    """Fill `job` from an uploaded spatial_photo.h5 -- no SHARP, no GPU.
+
+    Lets earlier runs (for example the CLI's output) be inspected and turned into a
+    DS-Image in the browser. Never raises: a failure is recorded on the job.
+    """
+    temp_dir = Path(tempfile.mkdtemp(prefix="sharp-webui-"))
+    try:
+        job.state = "running"
+        job.report("loading", 0.1)
+        h5_path = temp_dir / "spatial_photo.h5"
+        h5_path.write_bytes(data)
+        if load is None:
+            from ..hdf5_io import load
+        started = time.perf_counter()
+        result = load(h5_path)
+        if result.rgb.ndim != 4 or result.rgb.shape[0] != 9:
+            raise ValueError(f"expected 9 views, got rgb of shape {tuple(result.rgb.shape)}")
+        job.timings["load"] = time.perf_counter() - started
+
+        job.report("encoding", 0.6)
+        started = time.perf_counter()
+        n, height, width = result.rgb.shape[:3]
+        job.views = [encode_jpeg(view) for view in result.rgb]
+        job.depths = [encode_jpeg(view) for view in depth_to_rgb(result.depth, result.mask)]
+        job.source_jpeg = job.views[n // 2]
+        job.timings["encode"] = time.perf_counter() - started
+        job.source_info = {
+            "filename": job.params.filename, "width": width, "height": height,
+            "original_width": width, "original_height": height, "downscaled": False,
+        }
+        job.metadata = {  # arbitrary files may carry array or bytes attributes
+            key: value.tolist() if hasattr(value, "tolist")
+            else value.decode(errors="replace") if isinstance(value, bytes) else value
+            for key, value in result.metadata.items()
+        }
+        job.metadata.setdefault("output_width", width)
+        job.metadata.setdefault("output_height", height)
+        job.result = result
+        job.h5_path = h5_path
+        job.from_h5 = True
+        temp_dir = None  # ownership passes to the job
+        job.state = "done"
+        job.report("done", 1.0)
+    except BaseException as exc:  # noqa: BLE001 - surfaced to the client verbatim
+        job.error = f"{type(exc).__name__}: {exc}"
+        job.state = "error"
+        job.report("error", job.progress)
+    finally:
+        if temp_dir is not None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def _free_gpu_memory() -> None:

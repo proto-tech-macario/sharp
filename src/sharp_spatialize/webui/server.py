@@ -19,11 +19,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from . import ds as ds_module
 from . import jobs as jobs_module
 from .jobs import (
     DEFAULT_ANGLE_DEG,
     DEFAULT_MAX_SIZE,
+    H5_SUFFIXES,
     MAX_ANGLE_DEG,
+    MAX_H5_UPLOAD_BYTES,
     MAX_SIZE_CHOICES,
     MAX_UPLOAD_BYTES,
     Job,
@@ -39,6 +42,11 @@ SAMPLE_IMAGE = Path(__file__).resolve().parents[3] / "data" / "teaser.jpg"
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8737
+
+#: Free-view renders run one at a time; a dragged slider would otherwise pile them up.
+FREE_VIEW_LOCK = threading.Lock()
+#: Free-view offsets are capped at this multiple of the scene's median depth.
+MAX_FREE_VIEW_OFFSET = 0.5
 
 
 class SpatialPhotoHandler(BaseHTTPRequestHandler):
@@ -107,6 +115,15 @@ class SpatialPhotoHandler(BaseHTTPRequestHandler):
         segments = [segment for segment in parsed.path.split("/") if segment]
         if segments == ["api", "jobs"]:
             return self._create_job(parse_qs(parsed.query))
+        if len(segments) in (4, 5) and segments[:2] == ["api", "jobs"] and segments[3] == "ds":
+            job = self.config.store.get(segments[2])
+            if job is None:
+                return self._send_error_json(HTTPStatus.NOT_FOUND, "unknown or expired job")
+            self._drain_body()
+            if len(segments) == 4:
+                return self._start_ds(job, parse_qs(parsed.query))
+            if segments[4] == "loo":
+                return self._start_leave_one_out(job)
         self._send_error_json(HTTPStatus.NOT_FOUND, f"no route for {parsed.path}")
 
     def _route_api_get(self, segments: list[str]) -> None:
@@ -143,7 +160,35 @@ class SpatialPhotoHandler(BaseHTTPRequestHandler):
                 return self._send_error_json(HTTPStatus.NOT_FOUND, f"no view {index}")
             return self._send(HTTPStatus.OK, images[index], "image/jpeg")
 
+        if segments[0] == "ds":
+            return self._route_ds_get(job, segments[1:])
+
         self._send_error_json(HTTPStatus.NOT_FOUND, "no such job resource")
+
+    def _route_ds_get(self, job: Job, segments: list[str]) -> None:
+        analysis = job.ds
+        if analysis is None:
+            return self._send_error_json(HTTPStatus.NOT_FOUND, "no DS-Image built for this job")
+        if not segments:
+            return self._send_json(HTTPStatus.OK, analysis.status())
+        if segments == ["ds_image.jpg"]:
+            if analysis.ds_path is None or not analysis.ds_path.exists():
+                return self._send_error_json(HTTPStatus.GONE, "the DS-Image is not available")
+            stem = Path(job.source_info.get("filename", "photo")).stem
+            query = parse_qs(urlparse(self.path).query)
+            disposition = "inline" if "inline" in query else "attachment"
+            return self._send(HTTPStatus.OK, analysis.ds_path.read_bytes(), "image/jpeg",
+                              {"Content-Disposition": f'{disposition}; filename="{stem}.ds.jpg"'})
+        if segments == ["free.jpg"]:
+            return self._serve_free_view(analysis, parse_qs(urlparse(self.path).query))
+        if len(segments) == 2 and segments[0] in ("render", "error", "layers"):
+            key = f"{segments[0]}/{Path(segments[1]).stem}" if segments[0] != "layers" \
+                else Path(segments[1]).stem
+            image = analysis.images.get(key)
+            if image is None:
+                return self._send_error_json(HTTPStatus.NOT_FOUND, f"no DS image {key}")
+            return self._send(HTTPStatus.OK, image, "image/jpeg")
+        self._send_error_json(HTTPStatus.NOT_FOUND, "no such DS resource")
 
     # -- handlers ---------------------------------------------------------
 
@@ -169,18 +214,81 @@ class SpatialPhotoHandler(BaseHTTPRequestHandler):
             {"Content-Disposition": f'attachment; filename="{stem}_spatial_photo.h5"'},
         )
 
+    def _drain_body(self) -> None:
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > 0:
+            self.rfile.read(length)
+
+    def _start_ds(self, job: Job, query: dict[str, list[str]]) -> None:
+        if not ds_module.ds_available():
+            return self._send_error_json(HTTPStatus.NOT_IMPLEMENTED, "ds_m0 is not installed")
+        if job.state != "done":
+            return self._send_error_json(HTTPStatus.CONFLICT, "the spatial photo is not ready yet")
+        if job.ds is not None and (job.ds.state == "running" or job.ds.loo_state == "running"):
+            return self._send_error_json(HTTPStatus.CONFLICT, "a DS analysis is already running")
+        codec = query.get("codec", [ds_module.DEFAULT_DEPTH_CODEC])[0]
+        if codec not in ds_module.DEPTH_CODECS:
+            return self._send_error_json(HTTPStatus.BAD_REQUEST, f"unknown depth codec {codec!r}")
+        try:
+            h5_path = ensure_h5(job)  # also the size the DS-Image is compared against
+            result = job.result if job.result is not None else jobs_module.load_h5_result(h5_path)
+        except FileNotFoundError as exc:
+            return self._send_error_json(HTTPStatus.GONE, str(exc))
+
+        if job.ds is not None:
+            job.ds.cleanup()
+        analysis = ds_module.DSAnalysis(codec=codec)
+        job.ds = analysis
+        threading.Thread(
+            target=ds_module.run_analysis, args=(analysis, result, h5_path.stat().st_size),
+            daemon=True, name=f"ds-{job.job_id}",
+        ).start()
+        print(f"  job {job.job_id}: DS-Image ({codec})")
+        self._send_json(HTTPStatus.ACCEPTED, analysis.status())
+
+    def _start_leave_one_out(self, job: Job) -> None:
+        analysis = job.ds
+        if analysis is None or analysis.state != "done":
+            return self._send_error_json(HTTPStatus.CONFLICT, "build the DS-Image first")
+        if analysis.loo_state == "running":
+            return self._send_error_json(HTTPStatus.CONFLICT, "leave-one-out is already running")
+        if analysis.source is None:
+            return self._send_error_json(
+                HTTPStatus.GONE, "this job's views were released; rebuild the DS-Image first")
+        analysis.loo_state, analysis.loo_progress, analysis.loo_error = "running", 0.0, None
+        threading.Thread(target=ds_module.run_leave_one_out, args=(analysis,),
+                         daemon=True, name=f"loo-{job.job_id}").start()
+        self._send_json(HTTPStatus.ACCEPTED, analysis.status())
+
+    def _serve_free_view(self, analysis: ds_module.DSAnalysis, query: dict[str, list[str]]) -> None:
+        try:
+            offset = tuple(float(query.get(axis, ["0"])[0]) for axis in ("x", "y", "z"))
+        except ValueError:
+            return self._send_error_json(HTTPStatus.BAD_REQUEST, "x, y, z must be numbers (metres)")
+        scale = ds_module.median_depth(analysis) or 1.0
+        if max(abs(v) for v in offset) > MAX_FREE_VIEW_OFFSET * scale:
+            return self._send_error_json(HTTPStatus.BAD_REQUEST, "offset too large for this scene")
+        try:
+            with FREE_VIEW_LOCK:
+                image, coverage = ds_module.render_free_view(analysis, offset)
+        except FileNotFoundError as exc:
+            return self._send_error_json(HTTPStatus.GONE, str(exc))
+        self._send(HTTPStatus.OK, image, "image/jpeg", {"X-Coverage": f"{coverage:.4f}"})
+
     def _create_job(self, query: dict[str, list[str]]) -> None:
+        def first(name: str, default: str) -> str:
+            return query.get(name, [default])[0]
+
+        is_h5 = Path(first("filename", "")).suffix.lower() in H5_SUFFIXES
+        limit = MAX_H5_UPLOAD_BYTES if is_h5 else MAX_UPLOAD_BYTES
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
             return self._send_error_json(HTTPStatus.BAD_REQUEST, "empty upload")
-        if length > MAX_UPLOAD_BYTES:
+        if length > limit:
             return self._send_error_json(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                f"image is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+                f"{'file' if is_h5 else 'image'} is larger than {limit // (1024 * 1024)} MB",
             )
-
-        def first(name: str, default: str) -> str:
-            return query.get(name, [default])[0]
 
         use_sample = first("sample", "") == "1"
         if use_sample and self.config.sample_image is not None:
@@ -248,6 +356,13 @@ class ServerConfig:
             "max_angle_deg": MAX_ANGLE_DEG,
             "max_size_choices": list(MAX_SIZE_CHOICES),
             "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
+            "max_h5_upload_mb": MAX_H5_UPLOAD_BYTES // (1024 * 1024),
+            "ds": {
+                "available": ds_module.ds_available(),
+                "codecs": list(ds_module.DEPTH_CODECS),
+                "default_codec": ds_module.DEFAULT_DEPTH_CODEC,
+                "max_free_view_offset": MAX_FREE_VIEW_OFFSET,
+            },
         }
 
 
