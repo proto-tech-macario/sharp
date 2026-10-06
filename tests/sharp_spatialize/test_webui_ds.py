@@ -57,36 +57,50 @@ def test_analysis_builds_checks_and_scores_every_source_view(analysis):
     assert file["primary_jpeg_bytes"] > 0 and file["base_depth_bytes"] > 0
 
 
-def test_the_presenter_reproduces_the_reference_view_exactly(analysis):
-    """At the reference camera the Presenter returns the source view pixel for pixel."""
+@pytest.mark.parametrize("presenter", ds_module.PRESENTERS)
+def test_the_presenter_reproduces_the_reference_view_exactly(analysis, presenter):
+    """At the reference camera either Presenter returns the source view pixel for pixel."""
     ref = next(row for row in analysis.per_view if row["view"] == ds_module.REFERENCE_VIEW)
-    assert ref["presenter_only"]["coverage"] == pytest.approx(1.0)
-    assert ref["presenter_only"]["psnr"] > 100  # identical pixels
-    assert ref["presenter_only"]["depth_rel_median"] == pytest.approx(0.0, abs=1e-6)
+    scores = ref[presenter]["presenter_only"]
+    assert scores["coverage"] == pytest.approx(1.0)
+    assert scores["psnr"] > 100  # identical pixels
+    assert scores["depth_rel_median"] == pytest.approx(0.0, abs=1e-6)
 
 
-def test_outer_views_land_on_the_reference_geometry(analysis):
+@pytest.mark.parametrize("presenter", ds_module.PRESENTERS)
+def test_outer_views_land_on_the_reference_geometry(analysis, presenter):
     """At the outer cameras the rendered depth matches the source depth."""
     for row in analysis.per_view:
         if row["view"] in OUTER_VIEWS:
-            assert row["presenter_only"]["coverage"] > 0.3
-            assert row["presenter_only"]["depth_rel_median"] < 0.01
+            assert row[presenter]["presenter_only"]["coverage"] > 0.3
+            assert row[presenter]["presenter_only"]["depth_rel_median"] < 0.01
+
+
+def test_the_mesh_presenter_covers_at_least_what_the_points_do(analysis):
+    """Triangles fill the pinholes between projected points, so coverage never drops."""
+    summary = analysis.status()["summary"]
+    assert summary["mesh"]["ds_image"]["coverage"] >= summary["points"]["ds_image"]["coverage"]
 
 
 def test_summaries_average_only_the_outer_views(analysis):
     """Summaries skip the trivially exact reference view; LOO stays empty until run."""
-    summary = analysis.status()["summary"]["presenter_only"]
-    expected = np.mean([r["presenter_only"]["coverage"]
-                        for r in analysis.per_view if r["view"] != ds_module.REFERENCE_VIEW])
-    assert summary["coverage"] == pytest.approx(expected)
-    assert analysis.status()["summary"]["leave_one_out"]["coverage"] is None
+    status = analysis.status()
+    assert status["presenters"] == list(ds_module.PRESENTERS)
+    for presenter in ds_module.PRESENTERS:
+        summary = status["summary"][presenter]["presenter_only"]
+        expected = np.mean([r[presenter]["presenter_only"]["coverage"]
+                            for r in analysis.per_view if r["view"] != ds_module.REFERENCE_VIEW])
+        assert summary["coverage"] == pytest.approx(expected)
+        assert status["summary"][presenter]["leave_one_out"]["coverage"] is None
 
 
 def test_analysis_encodes_renders_errors_and_layers(analysis):
-    """Every render, error map and layer preview is available as a JPEG."""
+    """Every render and error map (per presenter) and layer preview is a JPEG."""
     for view in range(9):
         for kind in ("render", "error"):
-            assert Image.open(io.BytesIO(analysis.images[f"{kind}/{view}"])).format == "JPEG"
+            for presenter in ds_module.PRESENTERS:
+                image = analysis.images[f"{kind}/{presenter}/{view}"]
+                assert Image.open(io.BytesIO(image)).format == "JPEG"
     for key in ("layer0_rgb", "layer0_depth", "layer1_rgb", "layer1_depth", "layer1_mask"):
         assert key in analysis.images
 
@@ -108,9 +122,10 @@ def test_leave_one_out_scores_every_outer_view(analysis):
     """Leave-one-out adds a score to each of the 8 outer views."""
     ds_module.run_leave_one_out(analysis)
     assert analysis.loo_state == "done", analysis.loo_error
-    scored = [row["view"] for row in analysis.per_view if "leave_one_out" in row]
-    assert scored == OUTER_VIEWS
-    assert analysis.status()["summary"]["leave_one_out"]["coverage"] is not None
+    for presenter in ds_module.PRESENTERS:
+        scored = [row["view"] for row in analysis.per_view if "leave_one_out" in row[presenter]]
+        assert scored == OUTER_VIEWS
+        assert analysis.status()["summary"][presenter]["leave_one_out"]["coverage"] is not None
 
 
 def test_leave_one_out_needs_the_source_views(analysis):
@@ -121,9 +136,10 @@ def test_leave_one_out_needs_the_source_views(analysis):
     assert "rebuild" in analysis.loo_error
 
 
-def test_free_view_renders_a_jpeg_and_reports_coverage(analysis):
+@pytest.mark.parametrize("presenter", ds_module.PRESENTERS)
+def test_free_view_renders_a_jpeg_and_reports_coverage(analysis, presenter):
     """A free-view render is a full-size JPEG with a coverage share."""
-    image, coverage = ds_module.render_free_view(analysis, (0.0, 0.0, 0.0))
+    image, coverage = ds_module.render_free_view(analysis, (0.0, 0.0, 0.0), presenter)
     assert Image.open(io.BytesIO(image)).size == (analysis.asset.spatial_width,
                                                   analysis.asset.spatial_height)
     assert 0.0 < coverage <= 1.0
@@ -231,22 +247,27 @@ def test_a_ds_image_is_built_served_and_scored_over_http(client):
     assert "attachment" in headers["Content-Disposition"]
     _status, headers, _ = client.request(f"/api/jobs/{job_id}/ds/ds_image.jpg?inline=1")
     assert headers["Content-Disposition"].startswith("inline")
-    for path in ("render/3.jpg", "error/0.jpg", "layers/layer1_rgb.jpg"):
+    for path in ("render/3.jpg", "error/0.jpg", "render/3.jpg?presenter=points",
+                 "error/0.jpg?presenter=mesh", "layers/layer1_rgb.jpg"):
         status, headers, body = client.request(f"/api/jobs/{job_id}/ds/{path}")
         assert status == 200 and headers["Content-Type"] == "image/jpeg", path
-    status, headers, _ = client.request(f"/api/jobs/{job_id}/ds/free.jpg?x=0&y=0&z=0")
-    assert status == 200 and 0 < float(headers["X-Coverage"]) <= 1
+    for presenter in ds_module.PRESENTERS:
+        query = f"x=0&y=0&z=0&presenter={presenter}"
+        status, headers, _ = client.request(f"/api/jobs/{job_id}/ds/free.jpg?{query}")
+        assert status == 200 and 0 < float(headers["X-Coverage"]) <= 1
     assert client.json(f"/api/jobs/{job_id}")[1]["ds"]["state"] == "done"
 
     status, _ = client.json(f"/api/jobs/{job_id}/ds/loo", method="POST")
     assert status == 202
     ds = _wait_ds(client, job_id, key="loo")
-    assert ds["loo"]["state"] == "done" and ds["summary"]["leave_one_out"]["coverage"] is not None
+    assert ds["loo"]["state"] == "done"
+    assert ds["summary"]["mesh"]["leave_one_out"]["coverage"] is not None
 
 
 @pytest.mark.parametrize("path,code", [
     ("render/9.jpg", 404), ("layers/nope.jpg", 404),
     ("free.jpg?x=abc", 400), ("free.jpg?x=1e6", 400),
+    ("render/3.jpg?presenter=nope", 400), ("free.jpg?x=0&presenter=nope", 400),
 ])
 def test_bad_ds_requests_are_rejected(client, path, code):
     """Unknown images and bad free-view offsets get clear error codes."""

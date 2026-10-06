@@ -115,6 +115,13 @@
         <button class="tab" role="tab" data-tab="free" disabled>Free view</button>
         <button class="tab" role="tab" data-tab="quality" disabled>Quality</button>
         <span id="tabHint" class="tab-hint">Build a DS-Image to unlock the DS tabs</span>
+        <div id="presenterSeg" class="segmented presenter-seg" role="group" aria-label="DS Presenter" hidden>
+          <span class="seg-label">Presenter</span>
+          <button class="pseg active" data-presenter="mesh"
+                  title="Neighbouring samples drawn as triangles, colour interpolated (M)">Mesh</button>
+          <button class="pseg" data-presenter="points"
+                  title="M0 reference: every sample is one rounded pixel (M)">Points</button>
+        </div>
       </nav>
 
       <div id="paneViews" class="pane">
@@ -208,7 +215,8 @@
         <p class="pane-intro">Each outer view in the <code>.h5</code> is a SHARP render from a known
           camera, so it is a reference image: the DS Presenter renders from that same camera and
           is compared with it. <b>Coverage</b> is the share of the reference's pixels the render
-          fills; <b>PSNR / SSIM / depth</b> are measured on the filled pixels only.</p>
+          fills; <b>PSNR / SSIM / depth</b> are measured on the filled pixels only. Scores are for
+          the presenter picked at the top right (<b>Mesh</b> or <b>Points</b>, key M).</p>
         <div id="qualityCards" class="quality-cards"></div>
         <div class="loo-row">
           <button id="looBtn" class="tool-btn">Run leave-one-out</button>

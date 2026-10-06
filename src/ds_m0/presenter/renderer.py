@@ -1,4 +1,7 @@
-"""DS Presenter: DS Asset + target camera -> RGB + coverage (forward point splat).
+"""DS Presenter: DS Asset + target camera -> RGB + coverage.
+
+Forward point splat by default; `PresenterConfig.mode="mesh"` draws triangles instead
+(see mesh_renderer).
 
 Depends only on the model and geometry packages -- never on the creator, the
 file I/O stack, the sparse codec, the source dataset, 3DGS or MIV.
@@ -17,6 +20,7 @@ from ..geometry import camera_math, projection, transformation
 from ..model.asset import DSAsset
 from ..model.camera import Camera
 from .depth_buffer import DepthBuffer
+from .mesh_renderer import render_mesh
 
 log = logging.getLogger("ds_m0.presenter")
 
@@ -37,6 +41,12 @@ def render(asset: DSAsset, target_camera: Camera, config: PresenterConfig | None
     height = config.output_height or target_camera.height
     if width <= 0 or height <= 0:
         raise ConfigurationError("output dimensions must be positive")
+    if config.mode == "mesh":
+        rgb, coverage, depth_out = render_mesh(asset, target_camera, config, width, height)
+        log.info("mesh-rendered %dx%d, covered %d px", width, height, int(coverage.sum()))
+        return RenderResult(
+            rgb, coverage if config.enable_coverage_output else np.zeros_like(coverage), depth_out
+        )
 
     xs, ys, zs, lids, orders, colors = [], [], [], [], [], []
     for layer_id, layer in enumerate(asset.layers):

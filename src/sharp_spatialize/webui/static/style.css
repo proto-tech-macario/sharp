@@ -277,8 +277,23 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 8px;
 }
 
-.seg.active { background: var(--accent-soft); color: var(--accent); }
-.seg:hover:not(.active) { color: var(--text); }
+.seg.active, .pseg.active { background: var(--accent-soft); color: var(--accent); }
+.seg:hover:not(.active), .pseg:hover:not(.active) { color: var(--text); }
+
+/* DS Presenter switch, at the right end of the tab bar. */
+.presenter-seg { margin-left: auto; align-items: center; padding: 2px; }
+.presenter-seg[hidden] { display: none; }
+.seg-label { padding: 0 6px 0 8px; font-size: 12px; color: var(--faint); }
+.pseg {
+  font: inherit;
+  padding: 4px 11px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
 
 .tool-btn {
   display: inline-flex;

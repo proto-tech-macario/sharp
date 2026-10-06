@@ -29,6 +29,9 @@ const MODE_TAG = {
   err: "DS render vs reference",
 };
 
+/** DS Presenter modes the server renders; the first is the default. */
+const PRESENTER_NAME = { mesh: "Mesh", points: "Points" };
+
 const STAGE_TEXT = {
   queued: "Waiting for the GPU…",
   inference: "Running SHARP — one forward pass to 3D Gaussians…",
@@ -77,6 +80,7 @@ const dom = {
   errLegend: el("errLegend"),
   viewScore: el("viewScore"),
   tabHint: el("tabHint"),
+  presenterSeg: el("presenterSeg"),
   panes: { views: el("paneViews"), layers: el("paneLayers"), free: el("paneFree"), quality: el("paneQuality") },
   dsCard: el("dsCard"),
   dsBadge: el("dsBadge"),
@@ -129,6 +133,7 @@ const state = {
   comparing: false,
   tab: "views",
   ds: null, // latest DS status from the server
+  presenter: "mesh", // which DS Presenter's renders and scores are shown
   dsReady: false,
   dsPollTimer: null,
   free: { busy: false, pending: false, url: null },
@@ -206,7 +211,9 @@ function applyVisibleMode() {
   for (const mode of MODES) state.images[mode].forEach((img) => (img.hidden = mode !== shown));
   const isDs = shown === "ds" || shown === "err";
   dom.modeTag.hidden = !state.ready || !(isDs || state.comparing);
-  dom.modeTag.textContent = state.comparing && !isDs ? "Reference view (SHARP) · release to return" : MODE_TAG[shown];
+  dom.modeTag.textContent = state.comparing && !isDs
+    ? "Reference view (SHARP) · release to return"
+    : MODE_TAG[shown] + (isDs ? ` · ${PRESENTER_NAME[state.presenter]} presenter` : "");
   dom.modeTag.classList.toggle("ref", state.comparing && !isDs);
   dom.errLegend.hidden = shown !== "err";
   renderViewScore();
@@ -421,8 +428,8 @@ async function loadResults(status) {
 const IMAGE_URL = {
   rgb: (i) => `views/${i}.jpg`,
   depth: (i) => `depths/${i}.jpg`,
-  ds: (i) => `ds/render/${i}.jpg`,
-  err: (i) => `ds/error/${i}.jpg`,
+  ds: (i) => `ds/render/${i}.jpg?presenter=${state.presenter}`,
+  err: (i) => `ds/error/${i}.jpg?presenter=${state.presenter}`,
 };
 
 function makeImage(mode, index) {
@@ -613,6 +620,9 @@ document.addEventListener("keydown", (event) => {
   else if (event.key.toLowerCase() === "d") return setMode(state.mode === "depth" ? "rgb" : "depth");
   else if (event.key.toLowerCase() === "r") return setMode(state.mode === "ds" ? "rgb" : "ds");
   else if (event.key.toLowerCase() === "e") return setMode(state.mode === "err" ? "rgb" : "err");
+  else if (event.key.toLowerCase() === "m" && state.dsReady) {
+    return setPresenter(state.presenter === "mesh" ? "points" : "mesh");
+  }
   else if (event.key.toLowerCase() === "o") {
     setPinned(false);
     return setOrbit(!state.orbit);
@@ -750,10 +760,33 @@ function dsFailed(message) {
   dom.looBtn.disabled = false;
 }
 
+/** (Re)load the DS render and error images of all 9 views for the current presenter. */
+async function loadDsImages() {
+  const old = state.images.ds.concat(state.images.err);
+  const ds = LAYOUT.map((_, index) => makeImage("ds", index));
+  const err = LAYOUT.map((_, index) => makeImage("err", index));
+  await Promise.all([...ds, ...err].map((img) => img.decode().catch(() => null)));
+  old.forEach((img) => img.remove()); // swap only once the new set is ready, so nothing flickers
+  state.images.ds = ds;
+  state.images.err = err;
+  applyVisibleMode();
+  showView(state.index);
+}
+
+async function setPresenter(presenter) {
+  if (!PRESENTER_NAME[presenter] || presenter === state.presenter) return;
+  state.presenter = presenter;
+  document.querySelectorAll(".pseg").forEach((button) => {
+    button.classList.toggle("active", button.dataset.presenter === presenter);
+  });
+  if (!state.dsReady) return;
+  if (state.ds) renderQuality(state.ds);
+  if (state.tab === "free") requestFreeRender();
+  await loadDsImages();
+}
+
 async function dsLoaded(status) {
-  state.images.ds = LAYOUT.map((_, index) => makeImage("ds", index));
-  state.images.err = LAYOUT.map((_, index) => makeImage("err", index));
-  await Promise.all([...state.images.ds, ...state.images.err].map((img) => img.decode().catch(() => null)));
+  await loadDsImages();
   state.dsReady = true;
 
   dom.dsProgress.hidden = true;
@@ -770,7 +803,7 @@ async function dsLoaded(status) {
   setupFreeView(status);
   showView(state.index);
   setMode(state.mode === "rgb" ? "ds" : state.mode); // show the new render straight away
-  setStatus("DS-Image ready. Compare modes with R / E, hold Space for the reference.");
+  setStatus("DS-Image ready. Compare modes with R / E, switch Mesh / Points with M, hold Space for the reference.");
   dom.dsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -853,7 +886,7 @@ function renderLayers(status) {
 function scoreFor(view, key) {
   if (!state.ds) return null;
   const row = state.ds.per_view.find((r) => r.view === view);
-  return row ? row[key] : null;
+  return row && row[state.presenter] ? row[state.presenter][key] : null;
 }
 
 function renderViewScore() {
@@ -868,7 +901,7 @@ function renderViewScore() {
 function renderQuality(status) {
   dom.qualityCards.innerHTML = "";
   for (const [key, title, detail] of QUALITY_ROWS) {
-    const summary = status.summary[key];
+    const summary = status.summary[state.presenter][key];
     const card = document.createElement("div");
     card.className = `q-card${summary.coverage == null ? " empty" : ""}${key === "leave_one_out" ? " hero" : ""}`;
     card.innerHTML = `
@@ -896,7 +929,7 @@ function renderQuality(status) {
     <tr>${QUALITY_ROWS.map(() => "<th>cov</th><th>PSNR</th><th>SSIM</th>").join("")}</tr></thead>`;
   const body = status.per_view.map((row) => {
     const cells = QUALITY_ROWS.map(([key]) => {
-      const m = row[key];
+      const m = (row[state.presenter] || {})[key];
       return m ? `<td>${fmtPct(m.coverage)}</td><td>${fmtDb(m.psnr)}</td><td>${fmtSsim(m.ssim)}</td>` : "<td>—</td><td>—</td><td>—</td>";
     }).join("");
     return `<tr data-view="${row.view}"><td>${viewLabel(row.view, state.angleDeg)}</td>${cells}</tr>`;
@@ -970,7 +1003,8 @@ async function requestFreeRender() {
   const [x, y, z] = freeOffset();
   const started = performance.now();
   try {
-    const response = await fetch(dsUrl(`free.jpg?x=${x.toFixed(4)}&y=${y.toFixed(4)}&z=${z.toFixed(4)}`));
+    const query = `x=${x.toFixed(4)}&y=${y.toFixed(4)}&z=${z.toFixed(4)}&presenter=${state.presenter}`;
+    const response = await fetch(dsUrl(`free.jpg?${query}`));
     if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
     const coverage = Number(response.headers.get("X-Coverage"));
     const blob = await response.blob();
@@ -1025,6 +1059,7 @@ function setTabsEnabled(enabled) {
     if (tab.dataset.tab !== "views") tab.disabled = !enabled;
   });
   dom.tabHint.hidden = enabled || !(state.config && state.config.ds && state.config.ds.available);
+  dom.presenterSeg.hidden = !enabled;
 }
 
 function setTab(name) {
@@ -1043,6 +1078,9 @@ dom.dsCodec.addEventListener("change", () => {
   if (state.dsReady) dom.dsBuildBtn.textContent = "Rebuild with this codec";
 });
 dom.looBtn.addEventListener("click", startLeaveOneOut);
+document.querySelectorAll(".pseg").forEach((button) => {
+  button.addEventListener("click", () => setPresenter(button.dataset.presenter));
+});
 
 dom.compareBtn.addEventListener("pointerdown", () => setComparing(true));
 for (const name of ["pointerup", "pointerleave", "pointercancel"]) {

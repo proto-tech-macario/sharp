@@ -185,8 +185,13 @@ class SpatialPhotoHandler(BaseHTTPRequestHandler):
         if segments == ["free.jpg"]:
             return self._serve_free_view(analysis, parse_qs(urlparse(self.path).query))
         if len(segments) == 2 and segments[0] in ("render", "error", "layers"):
-            key = f"{segments[0]}/{Path(segments[1]).stem}" if segments[0] != "layers" \
-                else Path(segments[1]).stem
+            if segments[0] == "layers":
+                key = Path(segments[1]).stem
+            else:
+                presenter = self._presenter(parse_qs(urlparse(self.path).query))
+                if presenter is None:
+                    return self._send_error_json(HTTPStatus.BAD_REQUEST, "unknown presenter")
+                key = f"{segments[0]}/{presenter}/{Path(segments[1]).stem}"
             image = analysis.images.get(key)
             if image is None:
                 return self._send_error_json(HTTPStatus.NOT_FOUND, f"no DS image {key}")
@@ -263,7 +268,16 @@ class SpatialPhotoHandler(BaseHTTPRequestHandler):
                          daemon=True, name=f"loo-{job.job_id}").start()
         self._send_json(HTTPStatus.ACCEPTED, analysis.status())
 
+    @staticmethod
+    def _presenter(query: dict[str, list[str]]) -> str | None:
+        """The `presenter` query value, the default when absent, None when unknown."""
+        presenter = query.get("presenter", [ds_module.DEFAULT_PRESENTER])[0]
+        return presenter if presenter in ds_module.PRESENTERS else None
+
     def _serve_free_view(self, analysis: ds_module.DSAnalysis, query: dict[str, list[str]]) -> None:
+        presenter = self._presenter(query)
+        if presenter is None:
+            return self._send_error_json(HTTPStatus.BAD_REQUEST, "unknown presenter")
         try:
             offset = tuple(float(query.get(axis, ["0"])[0]) for axis in ("x", "y", "z"))
         except ValueError:
@@ -273,7 +287,7 @@ class SpatialPhotoHandler(BaseHTTPRequestHandler):
             return self._send_error_json(HTTPStatus.BAD_REQUEST, "offset too large for this scene")
         try:
             with FREE_VIEW_LOCK:
-                image, coverage = ds_module.render_free_view(analysis, offset)
+                image, coverage = ds_module.render_free_view(analysis, offset, presenter)
         except FileNotFoundError as exc:
             return self._send_error_json(HTTPStatus.GONE, str(exc))
         self._send(HTTPStatus.OK, image, "image/jpeg", {"X-Coverage": f"{coverage:.4f}"})

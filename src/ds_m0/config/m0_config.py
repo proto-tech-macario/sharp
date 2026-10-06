@@ -66,6 +66,9 @@ class DSImageReadConfig:
     verify_checksums: bool = True
 
 
+PRESENTER_MODES = ("points", "mesh")
+
+
 @dataclass
 class PresenterConfig:
     depth_epsilon: float = 1e-5
@@ -73,10 +76,18 @@ class PresenterConfig:
     output_width: int | None = None  # None: use the target camera's width
     output_height: int | None = None
     enable_coverage_output: bool = True
+    # "points": one-pixel point splat (the M0 reference). "mesh": neighbouring samples
+    # form triangles, broken where corner depths differ by more than mesh_depth_threshold.
+    mode: str = "points"
+    mesh_depth_threshold: float = 0.03
 
     def validate(self) -> None:
         if not self.depth_epsilon >= 0:
             raise ConfigurationError("depth_epsilon must be >= 0")
+        if self.mode not in PRESENTER_MODES:
+            raise ConfigurationError(f"mode must be one of {PRESENTER_MODES}")
+        if not self.mesh_depth_threshold > 0:
+            raise ConfigurationError("mesh_depth_threshold must be > 0")
         if self.rounding_mode not in ROUNDING_MODES:
             raise ConfigurationError(f"rounding_mode must be one of {ROUNDING_MODES}")
         for name in ("output_width", "output_height"):

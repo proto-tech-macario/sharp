@@ -27,6 +27,10 @@ from .jobs import depth_to_rgb, encode_jpeg
 
 DEPTH_CODECS = ("float32_zlib", "uint16_quant_zlib")
 DEFAULT_DEPTH_CODEC = "float32_zlib"
+#: Presenter modes rendered for every analysis; the first is the UI default.
+PRESENTERS = ("mesh", "points")
+DEFAULT_PRESENTER = PRESENTERS[0]
+SCORE_KEYS = ("presenter_only", "ds_image", "layer0_only", "leave_one_out")
 REFERENCE_VIEW = 4
 
 #: Colour error is drawn at this gain so small differences stay visible.
@@ -117,9 +121,13 @@ def _mean(rows: list[dict], key: str) -> float | None:
     return float(np.mean(values)) if values else None
 
 
-def summarize(per_view: list[dict], key: str) -> dict:
+def summarize(per_view: list[dict], presenter: str, key: str) -> dict:
     """Mean of each metric over the 8 outer views (the reference view is trivially exact)."""
-    rows = [row[key] for row in per_view if key in row and row["view"] != REFERENCE_VIEW]
+    rows = [
+        row[presenter][key]
+        for row in per_view
+        if key in row.get(presenter, {}) and row["view"] != REFERENCE_VIEW
+    ]
     return {m: _mean(rows, m) for m in ("coverage", "psnr", "ssim", "depth_rel_median")}
 
 
@@ -141,11 +149,11 @@ class DSAnalysis:
     roundtrip: dict[str, Any] = field(default_factory=dict)
     legacy_jpeg_ok: bool | None = None
     h5_bytes: int | None = None
-    per_view: list[dict] = field(default_factory=list)
+    per_view: list[dict] = field(default_factory=list)  # {"view", "mesh": {...}, "points": {...}}
     loo_state: str = "idle"  # idle | running | done | error
     loo_progress: float = 0.0
     loo_error: str | None = None
-    images: dict[str, bytes] = field(default_factory=dict)  # "render/3", "layer1_rgb", ...
+    images: dict[str, bytes] = field(default_factory=dict)  # "render/mesh/3", "layer1_rgb", ...
     ds_path: Path | None = None
     asset: Any = None  # the DSAsset read back from the file, for free-view renders
     source: Any = None  # the ds_m0 SourceDataset, kept for leave-one-out
@@ -172,9 +180,10 @@ class DSAnalysis:
                 "roundtrip": self.roundtrip,
                 "legacy_jpeg_ok": self.legacy_jpeg_ok,
                 "per_view": self.per_view,
+                "presenters": list(PRESENTERS),
                 "summary": {
-                    key: summarize(self.per_view, key)
-                    for key in ("presenter_only", "ds_image", "layer0_only", "leave_one_out")
+                    presenter: {key: summarize(self.per_view, presenter, key) for key in SCORE_KEYS}
+                    for presenter in PRESENTERS
                 },
                 "loo": {"state": self.loo_state, "progress": round(self.loo_progress, 3),
                         "error": self.loo_error},
@@ -243,7 +252,7 @@ def run_analysis(analysis: DSAnalysis, result, h5_bytes: int | None = None) -> N
     """
     temp_dir: Path | None = None
     try:
-        from ds_m0.config.m0_config import BuilderConfig, DSImageWriteConfig
+        from ds_m0.config.m0_config import BuilderConfig, DSImageWriteConfig, PresenterConfig
         from ds_m0.creator.asset_builder import build_ds_asset
         from ds_m0.evaluation.file_metrics import measure_ds_image
         from ds_m0.evaluation.reports import legacy_jpeg_check
@@ -295,20 +304,25 @@ def run_analysis(analysis: DSAnalysis, result, h5_bytes: int | None = None) -> N
             t = tick()
             for i, view in enumerate(source.views):
                 analysis.report("rendering", 0.4 + 0.58 * i / len(source.views))
-                direct = render(built, view.camera)
-                from_file = render(asset, view.camera)
-                layer0 = render(stripped, view.camera)
-                analysis.per_view.append({
-                    "view": view.view_id,
-                    "presenter_only": score_render(direct.rgb, direct.coverage, direct.depth, view),
-                    "ds_image": score_render(
-                        from_file.rgb, from_file.coverage, from_file.depth, view),
-                    "layer0_only": score_render(layer0.rgb, layer0.coverage, layer0.depth, view),
-                })
-                analysis.images[f"render/{view.view_id}"] = encode_jpeg(
-                    render_image(from_file.rgb, from_file.coverage))
-                analysis.images[f"error/{view.view_id}"] = encode_jpeg(
-                    error_image(from_file.rgb, from_file.coverage, view))
+                row: dict[str, Any] = {"view": view.view_id}
+                for presenter in PRESENTERS:
+                    config = PresenterConfig(mode=presenter)
+                    direct = render(built, view.camera, config)
+                    from_file = render(asset, view.camera, config)
+                    layer0 = render(stripped, view.camera, config)
+                    row[presenter] = {
+                        "presenter_only": score_render(
+                            direct.rgb, direct.coverage, direct.depth, view),
+                        "ds_image": score_render(
+                            from_file.rgb, from_file.coverage, from_file.depth, view),
+                        "layer0_only": score_render(
+                            layer0.rgb, layer0.coverage, layer0.depth, view),
+                    }
+                    analysis.images[f"render/{presenter}/{view.view_id}"] = encode_jpeg(
+                        render_image(from_file.rgb, from_file.coverage))
+                    analysis.images[f"error/{presenter}/{view.view_id}"] = encode_jpeg(
+                        error_image(from_file.rgb, from_file.coverage, view))
+                analysis.per_view.append(row)
             analysis.timings["render_and_score"] = tick() - t
 
             analysis.asset = asset
@@ -333,7 +347,7 @@ def run_leave_one_out(analysis: DSAnalysis) -> None:
     compared with. Each rebuild goes through the writer and reader, like a real file.
     """
     try:
-        from ds_m0.config.m0_config import BuilderConfig, DSImageWriteConfig
+        from ds_m0.config.m0_config import BuilderConfig, DSImageWriteConfig, PresenterConfig
         from ds_m0.creator.asset_builder import build_ds_asset
         from ds_m0.io.dsimage_reader import read_ds_image
         from ds_m0.io.dsimage_writer import write_ds_image
@@ -357,10 +371,12 @@ def run_leave_one_out(analysis: DSAnalysis) -> None:
                                              expected_view_count=None)
                     write_ds_image(rebuilt, path, DSImageWriteConfig(depth_codec=analysis.codec))
                     held_out = read_ds_image(path)
-                res = render(held_out, view.camera)
-                for row in analysis.per_view:
-                    if row["view"] == view.view_id:
-                        row["leave_one_out"] = score_render(res.rgb, res.coverage, res.depth, view)
+                for presenter in PRESENTERS:
+                    res = render(held_out, view.camera, PresenterConfig(mode=presenter))
+                    for row in analysis.per_view:
+                        if row["view"] == view.view_id:
+                            row[presenter]["leave_one_out"] = score_render(
+                                res.rgb, res.coverage, res.depth, view)
             analysis.timings["leave_one_out"] = time.perf_counter() - started
             analysis.loo_progress = 1.0
             analysis.loo_state = "done"
@@ -370,19 +386,23 @@ def run_leave_one_out(analysis: DSAnalysis) -> None:
 
 
 def render_free_view(
-    analysis: DSAnalysis, offset_m: tuple[float, float, float]
+    analysis: DSAnalysis,
+    offset_m: tuple[float, float, float],
+    presenter: str = DEFAULT_PRESENTER,
 ) -> tuple[bytes, float]:
     """Render the DS-Image from the reference camera moved by `offset_m` (its own axes).
 
     Returns the JPEG and the share of the output the render covers.
     """
+    from ds_m0.config.m0_config import PresenterConfig
     from ds_m0.geometry.transformation import translated_camera
     from ds_m0.presenter.renderer import render
 
     asset = analysis.asset
     if asset is None:
         raise FileNotFoundError("this DS-Image is no longer available; rebuild it")
-    res = render(asset, translated_camera(asset.base_camera, np.asarray(offset_m, float)))
+    camera = translated_camera(asset.base_camera, np.asarray(offset_m, float))
+    res = render(asset, camera, PresenterConfig(mode=presenter))
     return encode_jpeg(render_image(res.rgb, res.coverage)), float(res.coverage.mean())
 
 

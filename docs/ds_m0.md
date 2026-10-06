@@ -34,7 +34,7 @@ Exit codes: 0 ok, 1 failed check, 2 configuration, 3 input, 4 geometry, 5 format
 | `geometry` | the only camera maths: back-projection, transforms, projection, rounding, hidden test, order-independent winner selection |
 | `creator` | candidate generator, candidate merger, asset builder (knows nothing about files) |
 | `io` | source reader, JPEG codec, depth codecs, sparse Layer-1 codec, JUMBF container, writer, reader, debug-asset directory |
-| `presenter` | depth buffer + point-splat renderer (depends only on `model`, `geometry`, `config`) |
+| `presenter` | depth buffer, point-splat renderer, and the optional mesh renderer (depends only on `model`, `geometry`, `config`) |
 | `evaluation` | file / sparsity / coverage / round-trip / MIV-baseline metrics, full reference run + reports |
 | `config`, `tools` | `M0Config`, CLI, synthetic dataset |
 
@@ -74,10 +74,39 @@ The dependency rules of section 62 are enforced by AST-based tests in
 * **Round-trip RGB tolerance**: mean absolute Layer-0 error <= `rgb_mean_abs_tolerance` (12 by default, a
   sanity bound for JPEG, not a DS requirement); everything else is exact for the lossless depth codec.
 
+## Mesh Presenter (beyond M0)
+
+`PresenterConfig(mode="mesh")` (default `"points"`, the M0 reference) draws each layer as a triangle
+surface instead of one-pixel points. Neighbouring samples on the base grid form two triangles per 2x2 quad,
+split along the diagonal with the smaller depth difference; a triangle is dropped when its corner depths
+differ by more than `mesh_depth_threshold` (relative, default 0.03), so foreground and background are never
+stitched across a depth edge. Triangles are rasterised at integer pixel positions with perspective-correct
+colour and 1/z depth interpolation. Every sample is also splatted as a point, used only where no triangle
+landed, where it is in front of the triangle surface by more than the threshold, or where it is in front of
+a triangle from a later layer; this keeps the half-pixel rim along the image border and depth edges, and
+isolated Layer-1 samples. The reference camera still reproduces Layer 0 exactly. The file format and the
+Builder are unchanged, and the golden artifacts use the point Presenter.
+
+Measured on two real spatial photos, scored against the 8 outer source views (SHARP renders from those
+cameras), PSNR/SSIM on covered pixels:
+
+| photo | presenter | coverage | PSNR | SSIM | time per render |
+|---|---|---|---|---|---|
+| koala 545x374 | points | 79.0% | 27.7 dB | 0.944 | 0.13 s |
+| koala 545x374 | mesh | 85.4% | 30.1 dB | 0.975 | 0.16 s |
+| Qingdao 2016x1512 | points | 72.7% | 26.7 dB | 0.917 | 1.3 s |
+| Qingdao 2016x1512 | mesh | 82.9% | 28.5 dB | 0.952 | 2.7 s |
+
+On koala, away from depth edges the mesh reaches 36.2 dB (points: 30.5 dB), which matches sampling Layer 0
+bilinearly at the exact sub-pixel position. The error left is concentrated at depth edges (about 22 dB on
+the ~12% of pixels near one), and most remaining holes are where the target camera sees past the edge of
+the base view, which no Presenter can fill from a base-frame-sized asset.
+
 ## Known limitations (Part IV section 49)
 
 1. Layer 1 comes from existing multi-view RGBD, not a single image. 2. No AI completion of RGB or depth.
-3. Two layers only. 4. Presenter is a one-pixel point splat. 5. Uncovered regions are not inpainted.
+3. Two layers only. 4. The reference Presenter is a one-pixel point splat (see the mesh mode above).
+5. Uncovered regions are not inpainted.
 6. JPEG/depth encodings are prototype choices. 7. The MIV comparison is storage only (`--miv-file`).
 8. No IRU hardware. Also: parallel candidate generation is not implemented (single-threaded reference), so the
 optional multi-thread determinism test (section 16) is deferred.
