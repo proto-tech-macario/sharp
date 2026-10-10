@@ -27,7 +27,6 @@ import mimetypes
 import os
 import shutil
 import threading
-import webbrowser
 from functools import partial
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer
@@ -381,7 +380,7 @@ def serve(
         print(f"  cache:   {cache_dir}")
         print("  Ctrl-C to stop.")
         if open_browser:
-            threading.Timer(0.5, webbrowser.open, args=(url,)).start()
+            threading.Timer(0.5, photo_server.open_url, args=(url,)).start()
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
