@@ -1,0 +1,54 @@
+{
+  "base_camera": {
+    "coordinate_convention": "opencv_x_cam=R*x_world+t",
+    "cx": 48.0,
+    "cy": 48.0,
+    "fx": 115.19999694824219,
+    "fy": 115.19999694824219,
+    "height": 96,
+    "projection_type": "pinhole",
+    "rotation": [
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "skew": 0.0,
+    "translation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "width": 96
+  },
+  "kind": "ds_m0_debug_asset",
+  "layer_count": 2,
+  "metadata": {
+    "base_view_id": 4,
+    "candidate_merge_threshold": 1e-05,
+    "depth_format": "float32",
+    "depth_offset": 0.0,
+    "depth_scale": 1.0,
+    "depth_unit": "meter",
+    "generator_version": "ds_m0-0.1.0",
+    "hidden_depth_threshold": {
+      "absolute": 0.0,
+      "relative": 0.02
+    },
+    "rounding_mode": "half_up"
+  },
+  "spatial_height": 96,
+  "spatial_width": 96,
+  "version": "1.0"
+}

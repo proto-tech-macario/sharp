@@ -280,3 +280,28 @@ def test_out_of_range_and_malformed_view_indices_are_rejected(client):
 
     status, _payload = client.json(f"/api/jobs/{job_id}/nonsense")
     assert status == 404
+
+
+def test_open_url_uses_the_windows_browser_under_wsl(monkeypatch):
+    """Under WSL, --open goes through explorer.exe instead of xdg-open."""
+    launched, fallback = [], []
+    monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu-D")
+    monkeypatch.setattr(server_module.shutil, "which", lambda name: f"/mnt/c/Windows/{name}")
+    monkeypatch.setattr(server_module.subprocess, "Popen", lambda cmd, **_kw: launched.append(cmd))
+    monkeypatch.setattr(server_module.webbrowser, "open", fallback.append)
+
+    server_module.open_url("http://127.0.0.1:8737/")
+
+    assert launched == [["/mnt/c/Windows/explorer.exe", "http://127.0.0.1:8737/"]]
+    assert fallback == []
+
+
+def test_open_url_falls_back_to_webbrowser_outside_wsl(monkeypatch):
+    """Off WSL, or with no explorer.exe on PATH, the stdlib browser is used."""
+    fallback = []
+    monkeypatch.setattr(server_module, "_running_in_wsl", lambda: False)
+    monkeypatch.setattr(server_module.webbrowser, "open", fallback.append)
+
+    server_module.open_url("http://127.0.0.1:8737/")
+
+    assert fallback == ["http://127.0.0.1:8737/"]
